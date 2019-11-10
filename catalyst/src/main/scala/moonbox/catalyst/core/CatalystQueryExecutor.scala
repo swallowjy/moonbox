@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,10 +20,7 @@
 
 package moonbox.catalyst.core
 
-import java.util.Properties
-
-import moonbox.catalyst.adapter.jdbc.JdbcRow
-import org.apache.spark.sql.UDFRegistration
+import moonbox.catalyst.jdbc.JdbcRow
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.types.StructType
 
@@ -41,7 +38,7 @@ trait CatalystQueryExecutor {
 
   def execute[T](plan: LogicalPlan, convert: (Option[StructType], Seq[Any]) => T): Iterator[T] = { ??? }
 
-  def adaptorFunctionRegister(udf: UDFRegistration)
+  //def adaptorFunctionRegister(udf: UDFRegistration)
 
   def translate(plan: LogicalPlan): Seq[String] = Seq()
 }

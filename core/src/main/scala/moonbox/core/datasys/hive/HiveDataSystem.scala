@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,45 +20,43 @@
 
 package moonbox.core.datasys.hive
 
+import moonbox.common.MbLogging
 import moonbox.core.datasys.DataSystem
 import org.apache.spark.sql.hive.HiveClientUtils
 
 class HiveDataSystem(props: Map[String, String])
-  extends DataSystem(props) {
-  //  require(contains("metastore.url", "metastore.driver", "metastore.user",
-  //    "metastore.password", "hivedb"))
+	extends DataSystem(props) with MbLogging {
 
-  //  require(contains("metastore.uris", "hivedb"))
+	if (props.contains("metastore.uris")) {
+		checkOptions("metastore.uris", "hivedb")
+	} else {
+		checkOptions("metastore.url", "metastore.driver", "metastore.user",
+			"metastore.password", "hivedb")
+	}
 
-  require(contains("hivedb"))
 
-  override def tableNames(): Seq[String] = {
-    val client = HiveClientUtils.getHiveClient(props)
-    client.listTables(props("hivedb"))
-  }
+	override def tableNames(): Seq[String] = {
+		val client = HiveClientUtils.getHiveClient(props)
+		client.listTables(props("hivedb"))
+	}
 
-  override def tableName(): String = {
-    props("hivetable")
-  }
+	override def tableName(): String = {
+		props("hivetable")
+	}
 
-  override def tableProperties(tableName: String): Map[String, String] = {
-    props.+("hivetable" -> tableName)
-  }
+	override def tableProperties(tableName: String): Map[String, String] = {
+		props.+("hivetable" -> tableName)
+	}
 
-  override def test(): Boolean = {
-    try {
-      val client = HiveClientUtils.getHiveClient(props)
-      if (client != null) {
-        true
-      } else {
-        false
-      }
-    } catch {
-      case e: Exception =>
-        e.printStackTrace()
-        false
-    } finally {
-      // we do not close hive client here
-    }
-  }
+	override def test(): Unit = {
+		try {
+			HiveClientUtils.getHiveClient(props)
+		} catch {
+			case e: Exception =>
+				logError("hive test failed.", e)
+				throw e
+		} finally {
+			// we do not close hive client here
+		}
+	}
 }

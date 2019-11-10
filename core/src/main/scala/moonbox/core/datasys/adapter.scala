@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,12 +20,12 @@
 
 package moonbox.core.datasys
 
-import moonbox.core.execution.standalone.DataTable
+import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
 import org.apache.spark.sql.catalyst.expressions.{Expression, ScalaUDF}
 import org.apache.spark.sql.catalyst.plans.JoinType
 import org.apache.spark.sql.catalyst.plans.logical.{Join, LogicalPlan}
 import org.apache.spark.sql.execution.aggregate.ScalaUDAF
-import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
+import org.apache.spark.sql.types.StructType
 
 trait Pushdownable { self: DataSystem =>
 	val supportedOperators: Seq[Class[_]]
@@ -72,7 +72,7 @@ trait Pushdownable { self: DataSystem =>
 
 	def buildScan(plan: LogicalPlan, sparkSession: SparkSession): DataFrame
 
-	def buildQuery(plan: LogicalPlan): DataTable
+	def buildQuery(plan: LogicalPlan, sparkSession: SparkSession): DataTable
 }
 
 trait Insertable {
@@ -88,5 +88,8 @@ trait Deletable {
 }
 
 trait Updatable {
-	def update(key: Any, values: Seq[(String, String)]): Unit
+	def update(data: DataFrame,
+		tableSchema: Option[StructType],
+		isCaseSensitive: Boolean,
+		parameter: Map[String, String]): Unit
 }

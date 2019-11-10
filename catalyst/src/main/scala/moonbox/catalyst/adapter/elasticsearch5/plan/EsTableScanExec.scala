@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,12 @@ class EsTableScanExec(output: Seq[Attribute],
 								  rows: Seq[InternalRow]) extends TableScanExec(output, rows) {
 
     override def translate(context: CatalystContext): Seq[String] = {
-        Seq.empty[String]
+        if(rows != null && rows.isEmpty) {
+            context.limitSize = 0
+            Seq(s""" "from": 0, "size": 0 """)  // where 1=0 after sql parser, there is only LocalRelation, we use limit 0 simulate this case
+        }else {
+            Seq.empty[String]
+        }
     }
 
     override def toString(): String = {

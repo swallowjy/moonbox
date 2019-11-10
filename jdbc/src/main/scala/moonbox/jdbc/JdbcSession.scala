@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,41 +22,25 @@ package moonbox.jdbc
 
 import java.util.{Properties, UUID}
 
-import moonbox.client.JdbcClient
+import moonbox.client.MoonboxClient
 
 /**
-  *
-  * @param jdbcClient
-  * @param user
   * @param pwd md5 value of the password
   */
-case class JdbcSession(jdbcClient: JdbcClient,
+case class JdbcSession(moonboxClient: MoonboxClient,
                        database: String,
-                       table: String,
                        user: String,
                        pwd: String, // md5 String of the original password
                        connectionProperties: Properties,
+                       isLocal: Boolean = true,
                        id: String = UUID.randomUUID().toString,
                        sessionStart: Long = System.currentTimeMillis
                       ) {
-  var closed: Boolean = false
 
+  def setReadTimeout(milliseconds: Int) = moonboxClient.setReadTimeout(milliseconds)
+  def getReadTimeout = moonboxClient.getReadTimeout
+  def isClosed: Boolean = !moonboxClient.isActive
   def close(): Unit = {
-    if (jdbcClient != null) {
-      jdbcClient.close()
-    }
-    closed = true
-  }
-
-  def isClosed(): Boolean = {
-    if (jdbcClient.isActive()) {
-      closed = false
-    } else {
-      if (jdbcClient != null) {
-        jdbcClient.close()
-      }
-      closed = true
-    }
-    closed
+    if (moonboxClient != null) moonboxClient.close()
   }
 }

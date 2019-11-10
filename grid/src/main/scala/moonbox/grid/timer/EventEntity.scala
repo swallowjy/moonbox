@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,19 +23,25 @@ package moonbox.grid.timer
 import java.util.Date
 
 object EventEntity {
-	val FUNC = "function"
-	val DEFINER = "definer"
+	val HANDLER = "handler"
+	val DEFINER_ORG = "org"
+	val DEFINER_NAME = "definer"
+	val NAME = "name"
+	val LANG = "lang"
 	val SQLS = "sqls"
+	val CONFIG = "config"
 }
 
 case class EventEntity(
 	group: String,
 	name: String,
+	lang: String,
 	sqls: Seq[String],
+	config: Map[String, String],
 	cronExpr: String,
+	org: String,
 	definer: String,
 	start: Option[Date],
 	end: Option[Date],
-	desc: Option[String],
-	function: Function0[Unit]
+	desc: Option[String]
 )

@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,10 @@ import scala.collection.JavaConverters._
 
 abstract class DataSystem(props: Map[String, String]) {
 
-	protected def contains(params: String*): Boolean = params.forall(props.contains)
+	protected def checkOptions(params: String*): Unit = {
+		val message = s"${params.mkString(", ")} must be in options."
+		require(params.forall(props.contains), message)
+	}
 
 	def tableNames(): Seq[String]
 
@@ -38,7 +41,7 @@ abstract class DataSystem(props: Map[String, String]) {
 
 	def tableName(): String
 
-	def test(): Boolean = true
+	def test(): Unit = {}
 }
 
 object DataSystem extends MbLogging {

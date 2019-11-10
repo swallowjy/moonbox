@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,37 +20,24 @@
 
 package moonbox.grid.deploy.master
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream}
-
 import akka.actor.ActorSystem
-import akka.remote.ContainerFormats.ActorRef
 import akka.serialization.SerializationExtension
 import moonbox.common.{MbConf, MbLogging}
 import moonbox.grid.config._
-import org.apache.curator.framework.CuratorFrameworkFactory
-import org.apache.curator.retry.ExponentialBackoffRetry
+import org.apache.curator.framework.CuratorFramework
 import org.apache.zookeeper.CreateMode
 
 import scala.collection.JavaConversions._
 import scala.reflect.ClassTag
 
 class ZookeeperPersistenceEngine(conf: MbConf, akkaSystem: ActorSystem) extends PersistenceEngine with MbLogging {
-	private val ZK_CONNECTION_TIMEOUT_MILLIS = 15000
-	private val ZK_SESSION_TIMEOUT_MILLIS = 60000
-	private val WORKING_DIR = conf.get(PERSIST_WORKING_DIR.key, PERSIST_WORKING_DIR.defaultValueString)
 
-	private val zk = {
-		val servers = conf.get(PERSIST_SERVERS.key, PERSIST_SERVERS.defaultValueString)
-		val retryTimes = conf.get(PERSIST_RETRY_TIMES.key, PERSIST_RETRY_TIMES.defaultValue.get)
-		val interval = conf.get(PERSIST_RETRY_WAIT.key, PERSIST_RETRY_WAIT.defaultValue.get).toInt
-		val client = CuratorFrameworkFactory.newClient(servers,
-			ZK_SESSION_TIMEOUT_MILLIS, ZK_CONNECTION_TIMEOUT_MILLIS,
-			new ExponentialBackoffRetry(interval, retryTimes))
-		client.start()
-		client
-	}
+	private val WORKING_DIR = conf.get(RECOVERY_ZOOKEEPER_DIR)
+	private val zk: CuratorFramework = ZooKeeperUtil.newClient(conf)
+
+
 	override def persist(name: String, obj: Object): Unit = {
-		serializeInfoFile(WORKING_DIR  + "/" + name, obj)
+		serializeInfoFile(name, obj)
 	}
 
 	override def unpersist(name: String): Unit = {
@@ -58,9 +45,9 @@ class ZookeeperPersistenceEngine(conf: MbConf, akkaSystem: ActorSystem) extends 
 	}
 
 	override def read[T: ClassTag](prefix: String): Seq[T] = {
-		if (exist(WORKING_DIR + "/" + prefix)) {
-			zk.getChildren.forPath(WORKING_DIR).filter(_.startsWith(prefix)).flatMap { name =>
-				deserializeFromFile[T](name, zk.getData.forPath(WORKING_DIR + "/" + name))
+		if (exist(prefix)) {
+			zk.getChildren.forPath(WORKING_DIR + "/" + prefix).flatMap { name =>
+				deserializeFromFile[T](prefix + "/" + name, zk.getData.forPath(WORKING_DIR + "/" + prefix + "/" + name))
 			}
 		} else {
 			Seq[T]()
@@ -69,21 +56,14 @@ class ZookeeperPersistenceEngine(conf: MbConf, akkaSystem: ActorSystem) extends 
 
 	private def serializeInfoFile(path: String, value: AnyRef): Unit = {
 		try {
-			val serialized: Array[Byte] = value match {
-				case actorRef: ActorRef =>
-					SerializationExtension(akkaSystem).serialize(value).get
-				case _ =>
-					val bos = new ByteArrayOutputStream()
-					val oos = new ObjectOutputStream(bos)
-					oos.writeObject(value)
-					oos.flush()
-					oos.close()
-					bos.toByteArray
+			val serialized: Array[Byte] = SerializationExtension(akkaSystem).serialize(value).get
+			if (exist(path)) {
+				zk.delete().deletingChildrenIfNeeded().forPath(WORKING_DIR  + "/" + path)
 			}
-			zk.create().creatingParentsIfNeeded().withMode(CreateMode.PERSISTENT).forPath(path, serialized)
+			zk.create().creatingParentsIfNeeded().withMode(CreateMode.PERSISTENT).forPath(WORKING_DIR  + "/" + path, serialized)
 		} catch {
 			case e: Exception =>
-				logWarning(s"Exception while serializing persist data. $path")
+				logWarning(s"Exception while serializing persist data. ${e.getMessage}")
 		}
 	}
 
@@ -91,25 +71,25 @@ class ZookeeperPersistenceEngine(conf: MbConf, akkaSystem: ActorSystem) extends 
 		import scala.reflect._
 		try {
 			val clazz = classTag[T].runtimeClass.asInstanceOf[Class[T]]
-			clazz.getSimpleName match {
+			Some(SerializationExtension(akkaSystem).deserialize(bytes, clazz).get)
+			/*clazz.getSimpleName match {
 				case "ActorRef" =>
 					Some(SerializationExtension(akkaSystem).deserialize(bytes, clazz).get)
 				case _ =>
 					val bis: ByteArrayInputStream = new ByteArrayInputStream(bytes)
 					val ois: ObjectInputStream = new ObjectInputStream(bis)
 					Some(ois.readObject().asInstanceOf[T])
-			}
-
+			}*/
 		} catch {
 			case e: Exception =>
 				logWarning("Exception while reading persisted data. Delete it.")
-				zk.delete().forPath(filename)
+				zk.delete().deletingChildrenIfNeeded().forPath(WORKING_DIR + "/" +filename)
 				None
 		}
 	}
 
 	override def exist(path: String) = {
-		null != zk.checkExists().forPath(path)
+		null != zk.checkExists().forPath(WORKING_DIR + "/" + path)
 	}
 }
 

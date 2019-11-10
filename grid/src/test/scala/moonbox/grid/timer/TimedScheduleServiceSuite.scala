@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,11 @@ class TimedScheduleServiceSuite extends FunSuite with BeforeAndAfterAll {
 		conf.set("moonbox.timer.org.quartz.dataSource.quartzDataSource.user", "root")
 		conf.set("moonbox.timer.org.quartz.dataSource.quartzDataSource.password", "123456")
 		conf.set("moonbox.timer.org.quartz.dataSource.quartzDataSource.maxConnections", "10")
-		timedEventService = new TimedEventServiceImpl(conf)
+		timedEventService = new TimedEventServiceImpl(conf, new EventHandler() {
+			override def apply(v0: String, v1: String, v2: String, v3: Seq[String], v4: Map[String, String]): Unit = {
+				println(v1 + v2 + v3 + v4)
+			}
+		})
 		timedEventService.start()
 	}
 
@@ -49,27 +53,35 @@ class TimedScheduleServiceSuite extends FunSuite with BeforeAndAfterAll {
 		timedEventService.addTimedEvent(EventEntity(
 			group = "group_test",
 			name = "event_test",
+			lang = "mql",
 			sqls = Seq(),
+			config = Map(
+				"spark.master" -> "local[*]",
+				"spark.app.name" ->"test1"
+			),
 			cronExpr = "0/2 * * * * ?",
+			org = "moonbox",
 			definer = "sally",
 			start = None,
 			end = None,
-			desc = None,
-			function = () => {
-				println()
-			}
+			desc = None
 		)
 		)
 		timedEventService.addTimedEvent(EventEntity(
 			group = "group_test",
 			name = "event_test2",
+			lang = "hql",
 			sqls = Seq(),
+			config = Map(
+				"spark.master" -> "local[*]",
+				"spark.app.name" ->"test1"
+			),
 			cronExpr = "0/4 * * * * ?",
+			org = "moonbox",
 			definer = "lee",
 			start = None,
 			end = None,
-			desc = None,
-			function = () => {})
+			desc = None)
 		)
 		Thread.sleep(10000)
 		timedEventService.getTimedEvents("group_test").foreach(println)

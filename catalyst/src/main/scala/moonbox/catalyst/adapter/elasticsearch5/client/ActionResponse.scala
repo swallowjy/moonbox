@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,11 +25,10 @@ import java.util.LinkedList
 
 import org.apache.spark.sql.types.StructType
 import moonbox.catalyst.adapter.util.SparkUtil._
-import moonbox.common.MbLogging
 
 import scala.collection.mutable
 
-class ActionResponse extends MbLogging{
+class ActionResponse {
     private var succeeded = false
     private var totalHits = 0L
     private val hits = new LinkedList[HitWrapper]

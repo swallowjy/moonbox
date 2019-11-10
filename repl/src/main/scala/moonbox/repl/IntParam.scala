@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,11 +21,5 @@
 package moonbox.repl
 
 object IntParam {
-	def unapply(arg: String): Option[Int] = {
-		try {
-			Some(arg.toInt)
-		} catch {
-			case e: NumberFormatException => None
-		}
-	}
+	def unapply(arg: String): Option[Int] = Some(arg.toInt)
 }

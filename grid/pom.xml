@@ -5,7 +5,8 @@
     <parent>
         <artifactId>moonbox-parent_2.11</artifactId>
         <groupId>edp.moonbox</groupId>
-        <version>0.2.0-SNAPSHOT</version>
+        <version>0.3.0-beta</version>
+        <relativePath>../pom.xml</relativePath>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -26,46 +27,36 @@
         </dependency>
         <dependency>
             <groupId>edp.moonbox</groupId>
-            <artifactId>moonbox-localservice_2.11</artifactId>
+            <artifactId>moonbox-launcher_2.11</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>edp.moonbox</groupId>
-            <artifactId>moonbox-core_2.11</artifactId>
+            <artifactId>moonbox-protocol_2.11</artifactId>
             <version>${project.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.httpcomponents</groupId>
-                    <artifactId>httpcore</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.apache.httpcomponents</groupId>
-                    <artifactId>httpclient</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpcore</artifactId>
-            <version>4.4.5</version>
+            <groupId>edp.moonbox</groupId>
+            <artifactId>moonbox-catalog_2.11</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpclient</artifactId>
-            <version>4.5.2</version>
+            <groupId>edp.moonbox</groupId>
+            <artifactId>moonbox-testkit_2.11</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
         </dependency>
-
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-all</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.typesafe.akka</groupId>
             <artifactId>akka-actor_${scala.library}</artifactId>
         </dependency>
         <dependency>
             <groupId>com.typesafe.akka</groupId>
-            <artifactId>akka-cluster_${scala.library}</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.typesafe.akka</groupId>
-            <artifactId>akka-cluster-tools_${scala.library}</artifactId>
+            <artifactId>akka-remote_${scala.library}</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.curator</groupId>
@@ -74,6 +65,10 @@
         <dependency>
             <groupId>org.apache.curator</groupId>
             <artifactId>curator-framework</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.curator</groupId>
+            <artifactId>curator-recipes</artifactId>
         </dependency>
         <!-- akka http -->
         <dependency>
@@ -89,10 +84,15 @@
             <artifactId>json4s-jackson_2.11</artifactId>
             <exclusions>
                 <exclusion>
-                    <artifactId>jackson-databind</artifactId>
                     <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>jackson-databind</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.6.5</version>
         </dependency>
         <dependency>
             <groupId>de.heikoseeberger</groupId>

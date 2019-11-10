@@ -2,7 +2,7 @@
   <<
   Moonbox
   ==
-  Copyright (C) 2016 - 2018 EDP
+  Copyright (C) 2016 - 2019 EDP
   ==
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -22,9 +22,10 @@
     <id>dist</id>
     <formats>
         <format>tar.gz</format>
+        <format>dir</format>
     </formats>
     <includeBaseDirectory>true</includeBaseDirectory>
-    <baseDirectory>moonbox</baseDirectory>
+    <baseDirectory>moonbox-${project.version}</baseDirectory>
 
     <fileSets>
         <fileSet>
@@ -48,10 +49,15 @@
             <directory>
                 ${project.parent.basedir}/conf
             </directory>
+            <excludes>
+                <exclude>moonbox-defaults.conf</exclude>
+                <exclude>moonbox-env.sh</exclude>
+                <exclude>slaves</exclude>
+            </excludes>
             <outputDirectory>conf</outputDirectory>
         </fileSet>
         <fileSet>
-            <outputDirectory>log</outputDirectory>
+            <outputDirectory>logs</outputDirectory>
             <excludes><exclude>**/*</exclude></excludes>
         </fileSet>
     </fileSets>
@@ -59,21 +65,13 @@
     <dependencySets>
         <dependencySet>
             <excludes>
-                <exclude>org.elasticsearch:elasticsearch</exclude>
-                <exclude>org.elasticsearch.client:transport</exclude>
-                <exclude>org.elasticsearch:elasticsearch-spark_2.11</exclude>
-                <exclude>org.mongodb:mongodb-driver-core</exclude>
-                <exclude>org.mongodb:mongodb-driver</exclude>
-                <exclude>io.netty:netty-common</exclude>
-                <exclude>io.netty:netty-handler</exclude>
-                <exclude>io.netty:netty-resolver</exclude>
-                <exclude>io.netty:netty-transport</exclude>
-                <exclude>io.netty:netty-codec</exclude>
-                <exclude>io.netty:netty-codec-http</exclude>
-                <exclude>io.netty:netty-buffer</exclude>
-                <exclude>org.apache.lucene:*</exclude>
-                <exclude>edp.moonbox:moonbox-jdbc_2.11</exclude>
+                <exclude>edp.moonbox:moonbox-catalyst_2.11</exclude>
+                <exclude>edp.moonbox:moonbox-core_2.11</exclude>
+                <exclude>edp.moonbox:moonbox-*-adapter</exclude>
+                <exclude>edp.moonbox:moonbox-spark-batch_2.11</exclude>
+                <exclude>edp.moonbox:moonbox-spark-interactive_2.11</exclude>
             </excludes>
+
             <outputDirectory>libs</outputDirectory>
             <useTransitiveDependencies>true</useTransitiveDependencies>
             <unpack>false</unpack>
@@ -82,64 +80,22 @@
         </dependencySet>
         <dependencySet>
             <includes>
-                <!--common-->
-                <include>edp.moonbox:moonbox-common_2.11</include>
-                <include>edp.moonbox:moonbox-core_2.11</include>
-                <include>redis.clients:jedis</include>
-                <!--mysql-->
-                <include>mysql:mysql-connector-java</include>
-                <include>edp.moonbox:moonbox-mysql-adapter</include>
-                <!--hbase-->
-                <include>org.apache.hbase:hbase-client</include>
-                <include>org.apache.hbase:hbase-common</include>
-                <include>org.apache.hbase:hbase-hadoop2-compat</include>
-                <include>org.apache.hbase:hbase-hadoop-compat</include>
-                <include>org.apache.hbase:hbase-prefix-tree</include>
-                <include>org.apache.hbase:hbase-procedure</include>
-                <include>org.apache.hbase:hbase-protocol</include>
-                <include>org.apache.hbase:hbase-server</include>
-                <include>edp.moonbox:spark-hbase-connector</include>
-                <include>edp.moonbox:moonbox-hbase-adapter</include>
-                <!--presto-->
-                <include>edp.moonbox:spark-presto-connector</include>
-                <include>com.lihaoyi:fastparse_2.11</include>
-                <include>com.lihaoyi:fastparse-utils_2.11</include>
-                <include>com.lihaoyi:sourcecode_2.11</include>
-                <include>com.facebook.presto:presto-jdbc</include>
-                <include>edp.moonbox:moonbox-presto-adapter</include>
-                <!-- mongo -->
-                <include>org.mongodb:mongo-java-driver</include>
-                <include>org.mongodb.spark:mongo-spark-connector_2.11</include>
-                <include>edp.moonbox:moonbox-mongo-adapter</include>
-                <!-- elasticsearch  -->
                 <include>edp.moonbox:moonbox-catalyst_2.11</include>
-                <include>org.elasticsearch:elasticsearch-spark-20_2.11</include>
-                <include>org.elasticsearch.client:rest</include>
-                <include>org.apache.httpcomponents:httpasyncclient</include>
-                <include>org.apache.httpcomponents:httpclient</include>
-                <include>org.apache.httpcomponents:httpcore-nio</include>
-                <include>org.apache.httpcomponents:httpcore</include>
-                <include>commons-codec:commons-codec</include>
-                <include>org.json:json</include>
-                <include>edp.moonbox:moonbox-elasticsearch-adapter</include>
-                <!-- kafka -->
-                <include>org.apache.spark:spark-sql-kafka-0-10_2.11</include>
-                <include>org.apache.kafka:kafka-clients</include>
-                <!--kudu-->
-                <include>org.apache.kudu:kudu-client</include>
-                <include>org.apache.kudu:kudu-spark2_2.11</include>
-                <include>edp.moonbox:moonbox-kudu-adapter</include>
-                <!--oracle-->
-                <include>com.oracle:ojdbc6</include>
-                <include>edp.moonbox:moonbox-oracle-adapter</include>
-                <!--sqlserver-->
-                <include>com.microsoft.sqlserver:sqljdbc4</include>
-                <include>edp.moonbox:moonbox-sqlserver-adapter</include>
-                <!--cassandra-->
-                <include>com.datastax.spark:spark-cassandra-connector_2.11</include>
-                <include>edp.moonbox:moonbox-cassandra-adapter</include>
+                <include>edp.moonbox:moonbox-core_2.11</include>
+                <include>edp.moonbox:moonbox-*-adapter</include>
             </includes>
             <outputDirectory>runtime</outputDirectory>
+            <useTransitiveDependencies>true</useTransitiveDependencies>
+            <unpack>false</unpack>
+            <scope>runtime</scope>
+            <useProjectArtifact>false</useProjectArtifact>
+        </dependencySet>
+        <dependencySet>
+            <includes>
+                <include>edp.moonbox:moonbox-spark-batch_2.11</include>
+                <include>edp.moonbox:moonbox-spark-interactive_2.11</include>
+            </includes>
+            <outputDirectory>apps</outputDirectory>
             <useTransitiveDependencies>true</useTransitiveDependencies>
             <unpack>false</unpack>
             <scope>runtime</scope>

@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@
 package org.apache.spark.sql.udf
 
 import moonbox.catalyst.core.parser.udf.{ArrayExists, ArrayFilter, ArrayMap}
-import org.apache.spark.sql.UDFRegistration
 import org.apache.spark.sql.catalyst.analysis.FunctionRegistry.FunctionBuilder
 import org.apache.spark.sql.catalyst.analysis.{FunctionRegistry, SimpleFunctionRegistry}
 import org.apache.spark.sql.catalyst.expressions.{Expression, ExpressionDescription, ExpressionInfo, RuntimeReplaceable}
@@ -32,9 +31,9 @@ import scala.util.{Failure, Success, Try}
 
 object UdfUtil {
     //for accessing private sql package -  UDFRegistration (register adaptor function)
-    def buildUdfRegister(reg: FunctionRegistry): UDFRegistration = {
+    /*def buildUdfRegister(reg: FunctionRegistry): UDFRegistration = {
         new UDFRegistration(reg)
-    }
+    }*/
 
     //spark or lower jdbc should call it
     def selfFunctionRegister(): FunctionRegistry = {

@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,18 +20,11 @@
 
 package moonbox.grid.deploy.master
 
-import java.net.URI
-
 import moonbox.common.MbConf
-import moonbox.grid.config._
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.FileSystem
 
 import scala.reflect.ClassTag
 
 class HdfsPersistenceEngine(conf: MbConf) extends PersistenceEngine {
-	private val WORKING_DIR = conf.get("moonbox.persist.hdfs.dir", "/grid")
-	private val hdfs = FileSystem.get(new URI(conf.get(PERSIST_SERVERS)), new Configuration())
 
 	override def persist(name: String, obj: Object): Unit = ???
 

@@ -5,7 +5,7 @@
     <parent>
         <artifactId>moonbox-parent_2.11</artifactId>
         <groupId>edp.moonbox</groupId>
-        <version>0.2.0-SNAPSHOT</version>
+        <version>0.3.0-beta</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
@@ -21,13 +21,13 @@
         <!-- Force import of Spark's servlet API for unit tests -->
 
         <!-- Mark Spark / Scala as provided -->
-        <dependency>
+        <!--<dependency>
             <groupId>org.scala-lang</groupId>
             <artifactId>scala-library</artifactId>
             <version>${scala.version}</version>
-            <!--Notice: if provided, shade do not have it in package finally-->
-            <!--<scope>provided</scope>-->
-        </dependency>
+            &lt;!&ndash;Notice: if provided, shade do not have it in package finally&ndash;&gt;
+            &lt;!&ndash;<scope>provided</scope>&ndash;&gt;
+        </dependency>-->
         <!-- we exclude jsr305 below and then expressly relist it as
              provided / optional to avoid dependency resolution possibly
              bringing it back into runtime scope.
@@ -71,7 +71,7 @@
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-streaming_${scala.library}</artifactId>
             <version>${spark.version}</version>
-            <!--<scope>provided</scope>-->
+            <scope>provided</scope>
         </dependency>
         <!--
         hadoop-common-2.7.1 conflict with spark 2.0.0-> hadoop-common-2.2.0
@@ -128,6 +128,10 @@
             <version>1.1.2</version>
             <exclusions>
                 <exclusion>
+                    <groupId>org.apache.hadoop</groupId>
+                    <artifactId>hadoop-yarn-common</artifactId>
+                </exclusion>
+                <exclusion>
                     <groupId>jdk.tools</groupId>
                     <artifactId>jdk.tools</artifactId>
                 </exclusion>
@@ -172,12 +176,12 @@
             </exclusions>
         </dependency>
 
-        <dependency>
+        <!--<dependency>
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-java</artifactId>
             <version>2.5.0</version>
             <scope>provided</scope>
-        </dependency>
+        </dependency>-->
         <dependency>
             <groupId>commons-logging</groupId>
             <artifactId>commons-logging</artifactId>
@@ -214,6 +218,43 @@
                         <goals>
                             <goal>shade</goal>
                         </goals>
+                        <configuration>
+                            <artifactSet>
+                                <excludes>
+                                    <exclude>org.scalatest:scalatest_2.11</exclude>
+                                    <exclude>org.scala-lang:*</exclude>
+                                </excludes>
+                            </artifactSet>
+
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+
+                            <relocations>
+                                <relocation>
+                                    <pattern>io.netty</pattern>
+                                    <shadedPattern>hbase.io.netty</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.jboss.netty</pattern>
+                                    <shadedPattern>hbase.org.jboss.netty</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.google.protobuf</pattern>
+                                    <shadedPattern>hbase.com.google.protobuf</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer"/>
+                            </transformers>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
@@ -222,7 +263,7 @@
 
     <profiles>
         <profile>
-            <id>hbase</id>
+            <id>hbase-filter</id>
             <activation>
                 <activeByDefault>false</activeByDefault>
             </activation>

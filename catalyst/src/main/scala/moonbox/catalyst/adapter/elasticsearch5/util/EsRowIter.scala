@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ package moonbox.catalyst.adapter.elasticsearch5.util
 
 import moonbox.catalyst.adapter.elasticsearch5.client.{ActionResponse, EsRestClient}
 import moonbox.catalyst.adapter.util.SparkUtil.colId2colNameMap
-import moonbox.common.MbLogging
 import org.apache.spark.sql.types.StructType
 import org.elasticsearch.client.Response
 import org.json.JSONObject
@@ -37,7 +36,7 @@ class EsRowIter[T](index: String,
                    mapping: Seq[(String, String)],
                    convert: (Option[StructType], Seq[Any]) => T,
                    limitSize: Int,
-                   client: EsRestClient) extends java.util.Iterator[T] with MbLogging{  //T ==> ROW
+                   client: EsRestClient) extends java.util.Iterator[T] {  //T ==> ROW
 
     private val actionRsp: ActionResponse = new ActionResponse()
     private val result: ArrayBuffer[T] = new ArrayBuffer[T]()
@@ -47,6 +46,7 @@ class EsRowIter[T](index: String,
     private var scrollId: String = _
     private var continue: Boolean = false
     private var resultIter: Iterator[T] = _
+    private var hasPassedLines: Long = 0  //use for limit
 
     private var runtime: Int = 0
 
@@ -64,7 +64,7 @@ class EsRowIter[T](index: String,
         val content = client.getContent(response)
         val jsonRspObject: JSONObject = new JSONObject(content)
         val responseLines = client.getFieldAsLong(jsonRspObject, "hits/total")
-        if(limitSize !=0 ){ //has limit size
+        if(limitSize != -1 ){ //has limit size
             shouldProcessLines = math.min(limitSize, responseLines) //min
         }
         else {
@@ -75,7 +75,6 @@ class EsRowIter[T](index: String,
         runtime = runtime +1
         hasProcessLines += fetchSize
 
-        logInfo(s"EsRowIter: $hasProcessLines $requestLines $responseLines count: $runtime ")
 
         if(client.containsAggs(jsonRspObject)){
             continue = false
@@ -120,11 +119,12 @@ class EsRowIter[T](index: String,
         }
     }
 
-    override def hasNext = {
-        getNextBulk()
+    override def hasNext = { //if can get next message, and no exceed the limit size, shouldProcessLines update in getNextBulk
+        getNextBulk() && (hasPassedLines < shouldProcessLines)
     }
 
     override def next() = {
+        hasPassedLines = hasPassedLines + 1
         resultIter.next()
     }
 }

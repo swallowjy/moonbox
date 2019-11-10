@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,15 +21,20 @@
 package moonbox.common
 
 import java.util.concurrent.ConcurrentHashMap
+
+import com.typesafe.config.Config
 import moonbox.common.config._
 import moonbox.common.util.Utils
+
 import scala.collection.JavaConverters._
 
 class MbConf(loadDefault: Boolean) extends Cloneable with Serializable with MbLogging {
 
 	def this() = this(true)
 
-	private val settings = new ConcurrentHashMap[String, String]()
+	private var settings = new ConcurrentHashMap[String, String]()
+
+	private var configs: Config = _
 
 	@transient private lazy val reader: ConfigReader = {
 		val _reader = new ConfigReader(new MbConfigProvider(settings))
@@ -46,7 +51,8 @@ class MbConf(loadDefault: Boolean) extends Cloneable with Serializable with MbLo
 
 	private val configFromFile = Utils.getDefaultPropertiesFile() match {
 		case Some(file) =>
-			Utils.typesafeConfig2Map(Utils.getConfigFromFile(file))
+			configs = Utils.getConfigFromFile(file)
+			Utils.typesafeConfig2Map(configs)
 		case None => Map[String, String]()
 	}
 
@@ -79,7 +85,7 @@ class MbConf(loadDefault: Boolean) extends Cloneable with Serializable with MbLo
 
 	def get(key: String): Option[String] = getOption(key)
 
-	def get(key: String, defaultValue: String): String ={
+	def get(key: String, defaultValue: String): String = {
 		settings.getOrDefault(key, defaultValue)
 	}
 
@@ -107,6 +113,10 @@ class MbConf(loadDefault: Boolean) extends Cloneable with Serializable with MbLo
 		entry.readFrom(reader)
 	}
 
+	def getConfig(key: String): Config = {
+		configs.getConfig(key)
+	}
+
 	private def loadFromSystemProperties(): Unit = {
 		Utils.getSystemProperties.foreach { case (k, v) =>
 			if (k.startsWith("moonbox.")) {
@@ -115,5 +125,10 @@ class MbConf(loadDefault: Boolean) extends Cloneable with Serializable with MbLo
 		}
 	}
 
+	override def clone(): MbConf = {
+		val result = super.clone().asInstanceOf[MbConf]
+		result.settings = new ConcurrentHashMap[String, String](settings)
+		result
+	}
 }
 

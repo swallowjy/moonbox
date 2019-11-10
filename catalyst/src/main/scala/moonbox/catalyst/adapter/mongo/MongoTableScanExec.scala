@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,12 @@ import org.apache.spark.sql.catalyst.expressions.Attribute
 class MongoTableScanExec(output: Seq[Attribute],
                          rows: Seq[InternalRow]) extends TableScanExec(output, rows) with MongoTranslateSupport {
   override def translate(context: CatalystContext) = {
-    Nil
+    if (rows == null) {
+      Nil
+    } else {
+      /* This code is used for 'limit 0' and 'where 1=0' (OptimizedPlan is LocalRelation(_, Nil)) */
+      "{$match: {$and: [{\"_id\": {$eq: null}}, {\"_id\": {$ne: null}}]}}" :: Nil
+      // TODO: to handle LocalRelation with non-Nil data
+    }
   }
 }

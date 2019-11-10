@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,25 +23,24 @@ package moonbox.catalyst.adapter.mongo
 import java.util.Properties
 
 import com.mongodb.MongoClient
-import moonbox.catalyst.adapter.jdbc.JdbcRow
 import moonbox.catalyst.adapter.mongo.client.MbMongoClient
 import moonbox.catalyst.adapter.mongo.schema.MongoSchemaInfer
 import moonbox.catalyst.adapter.mongo.util.MongoJDBCUtils
 import moonbox.catalyst.core.plan.CatalystPlan
 import moonbox.catalyst.core.{CatalystContext, CatalystPlanner, CatalystQueryExecutor, Strategy}
-import moonbox.common.MbLogging
+import moonbox.catalyst.jdbc.JdbcRow
 import org.apache.spark.sql.catalyst.catalog.CatalogRelation
 import org.apache.spark.sql.catalyst.expressions.{Alias, AttributeReference, GetStructField}
 import org.apache.spark.sql.catalyst.plans.logical.{Aggregate, LogicalPlan, Project}
 import org.apache.spark.sql.execution.datasources.LogicalRelation
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{DataType, StructType}
 import org.apache.spark.sql.{Row, UDFRegistration}
 import org.bson.{BsonDocument, Document}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 
-class MongoCatalystQueryExecutor(cli: MongoClient, props: Properties) extends CatalystQueryExecutor with MongoTranslateSupport with MbLogging {
+class MongoCatalystQueryExecutor(cli: MongoClient, props: Properties) extends CatalystQueryExecutor with MongoTranslateSupport {
 
   def this(properties: Properties) = this(null, properties)
   private var closed: Boolean = _
@@ -82,10 +81,14 @@ class MongoCatalystQueryExecutor(cli: MongoClient, props: Properties) extends Ca
 
   def toIterator[T](plan: LogicalPlan, converter: Seq[Any] => T): Iterator[T] = {
     val (iter, _, context) = getBsonIterator(plan)
-    bsonIteratorConverter(iter, context.index2FieldName, converter)
+    bsonIteratorConverter(iter, plan.schema, context.index2FieldName, converter)
   }
 
-  private def bsonIteratorConverter[T](iter: Iterator[Document], index2FieldName: mutable.Map[Int, String], converter: => Seq[Any] => T): Iterator[T] = {
+  private def bsonIteratorConverter[T](iter: Iterator[Document], schema: StructType, index2FieldName: mutable.Map[Int, String], converter: => Seq[Any] => T): Iterator[T] = {
+    val types: Array[DataType] = schema.fields.map(_.dataType)
+    if (types.length != index2FieldName.size){
+      throw new Exception("Data and schema not match.")
+    }
     new Iterator[T] {
       override def hasNext = iter.hasNext
       override def next() = {
@@ -100,7 +103,7 @@ class MongoCatalystQueryExecutor(cli: MongoClient, props: Properties) extends Ca
           }
           if (ithFieldName.isEmpty)
             throw new Exception("Field name cannot be null")
-          res :+= MongoJDBCUtils.bsonValue2Value(doc.get(ithFieldName.head), ithFieldName.tail)
+          res :+= MongoJDBCUtils.bsonValue2Value(doc.get(ithFieldName.head), ithFieldName.tail, types(i - 1))
         }
         converter(res)
       }
@@ -109,7 +112,7 @@ class MongoCatalystQueryExecutor(cli: MongoClient, props: Properties) extends Ca
 
   override def execute4Jdbc(plan: LogicalPlan): (Iterator[JdbcRow], Map[Int, Int], Map[String, Int]) = {
     val (iter, outputSchema, context) = getBsonIterator(plan, new CatalystContext)
-    val newIterator = bsonIteratorConverter(iter, context.index2FieldName, in => new JdbcRow(in: _*))
+    val newIterator = bsonIteratorConverter(iter, plan.schema, context.index2FieldName, in => new JdbcRow(in: _*))
     val columnLabel2Index = context.index2FieldName.map(e => e._2 -> e._1).toMap
     val index2SqlType = MongoJDBCUtils.index2SqlType(outputSchema)
     (newIterator, index2SqlType, columnLabel2Index)
@@ -118,16 +121,13 @@ class MongoCatalystQueryExecutor(cli: MongoClient, props: Properties) extends Ca
   private def getBsonIterator(plan: LogicalPlan, context: CatalystContext = new CatalystContext): (Iterator[Document], StructType, CatalystContext) = {
 //    val tableSchema = getTableSchema(client.client, client.database, client.collectionName)
     val (jsonPipeline, outputSchema) = translate(plan, context)
-    logInfo(s"Generated mongo pipeline: $jsonPipeline")
     val coll = client.client.getDatabase(client.database).getCollection(client.collectionName)
     (coll.aggregate(jsonPipeline.map(Document.parse).toList.asJava).iterator().asScala, outputSchema, context)
   }
 
   private def translate(plan: LogicalPlan, context: CatalystContext): (Seq[String], StructType) = {
     recordFieldNames(plan, context)
-    logInfo(s"index -> columnName: ${context.index2FieldName.mkString("(", ", ", ")")}")
     val next: CatalystPlan = planner.plan(plan).next()
-    logInfo(s"output schema: ${next.schema}")
     (next.translate(context), next.schema)
   }
 

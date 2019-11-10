@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,25 +32,22 @@ import org.quartz.Trigger.TriggerState
 import org.quartz._
 import org.quartz.impl.StdSchedulerFactory
 import org.quartz.impl.matchers.GroupMatcher
+
 import scala.collection.JavaConversions._
 import moonbox.grid.config._
 
-object TimedEventServiceImpl {
-
-}
-
-class TimedEventServiceImpl(conf: MbConf) extends TimedEventService with MbLogging {
+class TimedEventServiceImpl(conf: MbConf, handle: EventHandler) extends TimedEventService with MbLogging {
 
 	private val timedScheduler = {
 		val props = new Properties()
-		(TIMER_SERVICE_QUARTZ_DEFAULT_CONFIG ++ conf.getAll.filterKeys(key => key.startsWith("moonbox.timer.")))
+		(TIMER_SERVICE_QUARTZ_DEFAULT_CONFIG ++ conf.getAll.filterKeys(key => key.startsWith("moonbox.deploy.timer.")))
 		.foreach {
-			case (key, value) => props.put(key.stripPrefix("moonbox.timer."), value)
+			case (key, value) => props.put(key.stripPrefix("moonbox.deploy.timer."), value)
 		}
 		new StdSchedulerFactory(props).getScheduler
 	}
 
-	private val descriptor = CronDescriptor.instance(Locale.US) //Locale.CHINA
+	private val descriptor = CronDescriptor.instance(Locale.ROOT) //Locale.CHINA
 	private val parser = new CronParser(CronDefinitionBuilder.instanceDefinitionFor(CronType.QUARTZ))
 
 
@@ -73,9 +70,13 @@ class TimedEventServiceImpl(conf: MbConf) extends TimedEventService with MbLoggi
 
 	override def addTimedEvent(event: EventEntity): Unit = {
 		val jobDataMap = new JobDataMap()
-		jobDataMap.put(EventEntity.DEFINER, event.definer)
+		jobDataMap.put(EventEntity.DEFINER_ORG, event.org)
+		jobDataMap.put(EventEntity.DEFINER_NAME, event.definer)
+		jobDataMap.put(EventEntity.NAME, event.name)
+		jobDataMap.put(EventEntity.LANG, event.lang)
 		jobDataMap.put(EventEntity.SQLS, event.sqls)
-		jobDataMap.put(EventEntity.FUNC, event.function)
+		jobDataMap.put(EventEntity.HANDLER, handle)
+		jobDataMap.put(EventEntity.CONFIG, event.config)
 		val jobBuilder = JobBuilder.newJob(classOf[EventJob])
 		if (event.desc.isDefined) {
 			jobBuilder.withDescription(event.desc.get)

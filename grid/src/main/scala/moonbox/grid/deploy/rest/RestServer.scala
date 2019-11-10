@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,168 +20,155 @@
 
 package moonbox.grid.deploy.rest
 
+import java.math.BigInteger
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.Http.ServerBinding
 import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server._
 import akka.stream.ActorMaterializer
 import de.heikoseeberger.akkahttpjson4s.Json4sSupport.ShouldWritePretty
-import moonbox.common.message._
 import moonbox.common.{MbConf, MbLogging}
 import moonbox.grid.config._
-import moonbox.grid.deploy.MbService
+import moonbox.grid.deploy.{ConnectionInfo, ConnectionType, MoonboxService}
+import moonbox.grid.deploy.Interface._
 import org.json4s.jackson.Serialization
-import org.json4s.{CustomSerializer, DefaultFormats, JString, JInt}
+import org.json4s.{CustomSerializer, DefaultFormats, JInt, JString, Serializer}
 
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
+import scala.concurrent.ExecutionContext.Implicits.global
 
-class RestServer(host: String, port: Int, conf: MbConf, service: MbService,
+class RestServer(host: String, port: Int, conf: MbConf, mbService: MoonboxService,
 	implicit val akkaSystem: ActorSystem) extends JsonSerializer with MbLogging {
 
-	private val maxRetries: Int = conf.get(PORT_MAX_RETRIES.key, PORT_MAX_RETRIES.defaultValue.get)
+	private val maxRetries: Int = conf.get(PORT_MAX_RETRIES)
 	private var bindingFuture: Future[ServerBinding] = _
-	private val loginManager = service.getLoginManager()
-	implicit val materializer = ActorMaterializer()
-	implicit val formats = DefaultFormats +   //add custom special serializer
-		new CustomSerializer[java.sql.Date]( _ =>
-			(	{ case JInt(s) => new java.sql.Date(s.longValue())},
-				{ case x: java.sql.Date => JString(x.toString)})) +
-		new CustomSerializer[java.math.BigDecimal]( _ =>
-			(	{ case JString(s) => new java.math.BigDecimal(s) },
-				{ case b: java.math.BigDecimal => JString(b.toString)}))
+	private implicit val materializer = ActorMaterializer()
+	private implicit val formats = DefaultFormats ++ customFormats
+	private implicit val serialization = Serialization
+	private implicit val shouldWritePretty = ShouldWritePretty.True
 
-	implicit val serialization = Serialization
-	implicit val shouldWritePretty = ShouldWritePretty.True
+	private def customFormats: Traversable[Serializer[_]] = {
+		Seq(
+			new CustomSerializer[java.sql.Date](_ => (
+					{ case JInt(s) => new java.sql.Date(s.longValue()) },
+					{ case x: java.sql.Date => JString(x.toString) }
+				)
+			),
+			new CustomSerializer[java.math.BigDecimal](_ => (
+					{ case JString(s) => new java.math.BigDecimal(s) },
+					{ case b: java.math.BigDecimal => JString(b.toString) }
+				)
+			),
+			new CustomSerializer[java.math.BigInteger](_ => (
+					{ case JString(s) => new BigInteger(s) },
+					{ case b: java.math.BigInteger => JString(b.toString) }
+				)
+			)
+		)
+	}
 
+	private def createRoutes(localAddress: String) = {
+		extractClientIP { clientIP =>
+			implicit val connectionInfo = ConnectionInfo(localAddress, clientIP.value, ConnectionType.REST)
 
-	val routes: Route = {
-		path("login") {
-			post {
-				entity(as[LoginInbound]) { in =>
-					complete {
-						service.login(in.username, in.password).map {
-							case Some(token) =>
-								LoginOutbound(Some(token), None)
-							case None =>
-								LoginOutbound(None, Some(s"User '${in.username}' does not exist or password is incorrect."))
+			pathPrefix("management") {
+				path("cluster-info") {
+					get {
+						complete {
+							mbService.clusterInfo()
+						}
+					}
+				} ~
+				path("apps-info") {
+					get {
+						complete {
+							mbService.appsInfo()
 						}
 					}
 				}
-			}
-		} ~
-		path("logout") {
-			post {
-				entity(as[LogoutInbound]) { in =>
-					complete {
-						loginManager.isvalid(in.token) match {
-							case false =>
-								LogoutOutbound(error = Some("Token is incorrect or expired."))
-							case true =>
-								service.logout(in.token)
+			} ~
+			pathPrefix("service") {
+				path("query") {
+					post {
+						entity(as[SampleInbound]) { in =>
+							complete {
+								mbService.sample(in.username, in.password, in.sql, in.database)
+							}
+						}
+					}
+				} ~
+				path("translation") {
+					post {
+						entity(as[TranslationInbound]) { in =>
+							complete {
+								mbService.translate(in.username, in.password, in.sql, in.database)
+							}
+						}
+					}
+				} ~
+				path("verify") {
+					post {
+						entity(as[VerifyInbound]) { in =>
+							complete {
+								mbService.verify(in.username, in.password, in.sqls, in.database)
+							}
+						}
+					}
+				} ~
+				path("tableresources") {
+					post {
+						entity(as[TableResourceInbound]) { in =>
+							complete {
+								mbService.resources(in.username, in.password, in.sqls, in.database)
+							}
+						}
+					}
+				} ~
+				path("schema") {
+					post {
+						entity(as[SchemaInbound]) { in =>
+							complete {
+								mbService.schema(in.username, in.password, in.sql, in.database)
+							}
+						}
+					}
+				} ~
+				path("lineage") {
+					post {
+						entity(as[LineageInbound]) { in =>
+							complete {
+								mbService.lineage(in.username, in.password, in.sqls, in.database)
+							}
 						}
 					}
 				}
-			}
-		} ~
-		path("openSession") {
-			post {
-				entity(as[OpenSessionInbound]) { in =>
-					complete {
-						loginManager.isvalid(in.token) match {
-							case false =>
-								LogoutOutbound(error = Some("Token is incorrect or expired."))
-							case true =>
-								service.openSession(in.token, in.database)
+			} ~
+			pathPrefix("batch") {
+				path("submit") {
+					post {
+						entity(as[BatchQueryInbound]) { in =>
+							complete {
+								mbService.batchQuery(in.username, in.password, in.lang, in.sqls, in.config)
+							}
 						}
 					}
-				}
-			}
-		} ~
-		path("closeSession") {
-			post {
-				entity(as[CloseSessionInbound]) { in =>
-					complete {
-						loginManager.isvalid(in.token) match {
-							case false =>
-								LogoutOutbound(error = Some("Token is incorrect or expired."))
-							case true =>
-								service.closeSession(in.token, in.sessionId)
+				} ~
+				path("progress") {
+					post {
+						entity(as[BatchQueryProgressInbound]) { in =>
+							complete {
+								mbService.batchQueryProgress(in.username, in.password, in.jobId)
+							}
 						}
 					}
-				}
-			}
-		} ~
-		path("query") {
-			post {
-				entity(as[QueryInbound]) { in =>
-					complete {
-						loginManager.isvalid(in.token) match {
-							case false =>
-								LogoutOutbound(error = Some("Token is incorrect or expired."))
-							case true =>
-								service.jobQuery(in.token, in.sessionId, in.sqls)
-						}
-					}
-				}
-			}
-		} ~
-		path("submit") {
-			post {
-				entity(as[SubmitInbound]) { in =>
-					complete {
-						loginManager.isvalid(in.token) match {
-							case false => SubmitOutbound(error = Some("Token is incorrect or expired."))
-							case true =>
-								if (in.mode == "sync") {
-									service.jobSubmitSync(in.token, in.sqls)
-								} else {
-									service.jobSubmitAsync(in.token, in.sqls)
-								}
-						}
-					}
-				}
-			}
-		} ~
-		path("progress") {
-			post {
-				entity(as[ProgressInbound]) { in =>
-					complete {
-						loginManager.isvalid(in.token) match {
-							case false =>
-								ProgressOutbound(jobId = in.jobId, error = Some("Token is incorrect or expired."))
-							case true =>
-								service.jobProgress(in.token, in.jobId)
-						}
-					}
-				}
-			}
-		} ~
-		path("result") {
-			post {
-				entity(as[ResultInbound]) { in =>
-					complete {
-						loginManager.isvalid(in.token) match {
-							case false =>
-								ResultOutbound(jobId = in.jobId, error = Some("Token is incorrect or expired."))
-							case true =>
-								service.jobResult(in.token, in.jobId, in.offset, in.size)
-						}
-					}
-				}
-			}
-		} ~
-		path("cancel") {
-			post {
-				entity(as[CancelInbound]) { in =>
-					complete {
-						loginManager.isvalid(in.token) match {
-							case false =>
-								CancelOutbound(jobId = in.jobId, error = Some("Token is incorrect or expired."))
-							case true =>
-								service.jobCancel(in.token, in.jobId)
+				} ~
+				path("cancel") {
+					post {
+						entity(as[BatchQueryCancelInbound]) { in =>
+							complete {
+								mbService.batchQueryCancel(in.username, in.password, in.jobId)
+							}
 						}
 					}
 				}
@@ -194,10 +181,11 @@ class RestServer(host: String, port: Int, conf: MbConf, service: MbService,
 	def start(): Int = {
 		require(port == 0 || (port >= 1024 && port < 65535),
 			"rest port should be between 1024 (inclusive) and 65535 (exclusive), or 0 for a random free port.")
-		logInfo("Starting RestServer ...")
+		logInfo("Starting rest server ...")
 		for (offset <- 0 to maxRetries) {
 			val tryPort = if (port == 0) port else port + offset
 			try {
+				val routes = createRoutes(s"$host:$tryPort")
 				bindingFuture = Http().bindAndHandle(routes, host, tryPort)
 				val serverBinding: ServerBinding = Await.result(bindingFuture, new FiniteDuration(10, SECONDS))
 				logInfo(s"RestServer is listening on ${serverBinding.localAddress.toString}.")

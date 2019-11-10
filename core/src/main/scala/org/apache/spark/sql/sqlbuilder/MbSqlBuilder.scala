@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,15 +23,14 @@ package org.apache.spark.sql.sqlbuilder
 import java.util.concurrent.atomic.AtomicLong
 
 import moonbox.common.MbLogging
-import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, AggregateFunction}
-import org.apache.spark.sql.catalyst.expressions.{Alias, AttributeReference, BinaryOperator, CaseWhenCodegen, Cast, CheckOverflow, Coalesce, Contains, EndsWith, EqualTo, Exists, ExprId, Expression, GetArrayStructFields, GetStructField, If, In, InSet, IsNotNull, IsNull, Like, ListQuery, Literal, MakeDecimal, NamedExpression, Not, ScalarSubquery, SortOrder, StartsWith, StringPredicate, SubqueryExpression, UnscaledValue}
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, AggregateFunction, Last}
+import org.apache.spark.sql.catalyst.expressions.{Alias, AttributeReference, BinaryOperator, CaseWhenCodegen, Cast, CheckOverflow, Coalesce, Contains, DayOfMonth, EndsWith, EqualTo, Exists, ExprId, Expression, GetArrayStructFields, GetStructField, Hour, If, In, InSet, IsNotNull, IsNull, Like, ListQuery, Literal, MakeDecimal, Minute, Month, NamedExpression, Not, RLike, RegExpExtract, RegExpReplace, ScalarSubquery, Second, SortOrder, StartsWith, StringLocate, StringPredicate, SubqueryExpression, ToDate, UnscaledValue, Year}
 import org.apache.spark.sql.catalyst.optimizer.{CollapseProject, CombineUnions}
 import org.apache.spark.sql.catalyst.plans.logical.{GlobalLimit, Intersect, LocalLimit, Union, _}
 import org.apache.spark.sql.catalyst.rules.{Rule, RuleExecutor}
-import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.execution.datasources.LogicalRelation
 import org.apache.spark.sql.execution.datasources.mbjdbc.MbJDBCRelation
-import org.apache.spark.sql.types.{TimestampType, _}
+import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 
 import scala.collection.mutable
@@ -40,20 +39,26 @@ import scala.util.control.NonFatal
 class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 	require(plan.resolved, "LogicalPlan must be resolved.")
 
+	import MbSqlBuilder._
+
 	private val nextSubqueryId = new AtomicLong(0)
+
 	private def newSubqueryName(): String = s"gen_subquery_${nextSubqueryId.getAndIncrement()}"
+
 	var finalLogicalPlan: LogicalPlan = finalPlan(plan)
 
 	def toSQL: String = {
 		try {
 			//println(finalPlan.toString())
 			logicalPlanToSQL(finalLogicalPlan)
-		} catch { case NonFatal(e) =>
-			throw e
+		} catch {
+			case NonFatal(e) =>
+				throw e
 		}
 	}
 
-	def canonicalize(plan: LogicalPlan): LogicalPlan = Canonicalizer.execute(plan)
+	def canonicalize(plan: LogicalPlan): LogicalPlan =
+		Canonicalizer.execute(plan)
 
 	def finalPlan(plan: LogicalPlan): LogicalPlan = {
 		val realOutputNames: Seq[String] = plan.output.map(_.name)
@@ -76,11 +81,16 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 
 	def logicalPlanToSQL(logicalPlan: LogicalPlan): String = logicalPlan match {
 		case Distinct(p: Project) =>
-			projectToSQL(p, isDistinct = true)
+			val child = logicalPlanToSQL(p.child)
+			val expression = p.projectList.map(expressionToSQL(_)).mkString(",")
+			dialect.projectToSQL(p, isDistinct = true, child, expression)
 		case p: Project =>
-			projectToSQL(p, isDistinct = false)
+			val child = logicalPlanToSQL(p.child)
+			val expression = p.projectList.map(expressionToSQL(_)).mkString(",")
+			dialect.projectToSQL(p, isDistinct = false, child, expression)
 		case SubqueryAlias(alias, child) =>
-			build(s"(${logicalPlanToSQL(child)}) $alias")
+			val childSql = logicalPlanToSQL(child)
+			dialect.subqueryAliasToSQL(alias, childSql)
 		case a: Aggregate =>
 			aggregateToSQL(a)
 		case w: Window =>
@@ -90,7 +100,7 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 				case l: LocalRelation if l.data.isEmpty => false
 				case _ => true
 			}.map(logicalPlanToSQL)
-			if (childrenSQL.length > 1) childrenSQL.mkString(" UNION ALL ")
+			if (childrenSQL.length > 1) s"(${childrenSQL.mkString(" UNION ALL ")})"
 			else childrenSQL.head
 		case r: LogicalRelation =>
 			dialect.relation(r)
@@ -103,13 +113,10 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 			build(logicalPlanToSQL(child), whereOrHaving, expressionToSQL(condition))
 		case Limit(limitExpr, child) =>
 			dialect.limitSQL(logicalPlanToSQL(child), expressionToSQL(limitExpr))
-			//s"${logicalPlanToSQL(child)} LIMIT ${expressionToSQL(limitExpr)}"
 		case GlobalLimit(limitExpr, child) =>
 			dialect.limitSQL(logicalPlanToSQL(child), expressionToSQL(limitExpr))
-			//s"${logicalPlanToSQL(child)} LIMIT ${expressionToSQL(limitExpr)}"
 		case LocalLimit(limitExpr, child) =>
 			dialect.limitSQL(logicalPlanToSQL(child), expressionToSQL(limitExpr))
-			//s"${logicalPlanToSQL(child)} LIMIT ${expressionToSQL(limitExpr)}"
 		case s: Sort =>
 			build(
 				logicalPlanToSQL(s.child),
@@ -117,33 +124,55 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 				s.order.map(expressionToSQL).mkString(", ")
 			)
 		case p: Join =>
-			build(
-				logicalPlanToSQL(p.left),
-				p.joinType.sql,
-				"JOIN",
-				logicalPlanToSQL(p.right),
-				p.condition.map(condition => " ON " + expressionToSQL(condition)).getOrElse(""))
+			val left = logicalPlanToSQL(p.left)
+			val right = logicalPlanToSQL(p.right)
+			val condition = p.condition.map(condition => " ON " + expressionToSQL(condition)).getOrElse("")
+			dialect.joinSQL(p, left, right, condition)
 	}
 
 	def expressionToSQL(expression: Expression): String = expression match {
 		/*case a@Alias(array@GetArrayStructFields(child, field, _, _, _), name) =>
-			val colName = expressionToSQL(array)
-			s"$colName AS ${dialect.quote(colName)}"*/
+		  val colName = expressionToSQL(array)
+		  s"$colName AS ${dialect.quote(colName)}"*/
+		case toDate@ToDate(child) =>
+			s"${dialect.expressionToSQL(toDate)}(${expressionToSQL(child)})"
+		case year@Year(child) =>
+			s"${dialect.expressionToSQL(year)}(${expressionToSQL(child)})"
+		case month@Month(child) =>
+			s"${dialect.expressionToSQL(month)}(${expressionToSQL(child)})"
+		case dayOfMonth@DayOfMonth(child) =>
+			s"${dialect.expressionToSQL(dayOfMonth)}(${expressionToSQL(child)})"
+		case hour@Hour(child, _) =>
+			s"${dialect.expressionToSQL(hour)}(${expressionToSQL(child)})"
+		case miniute@Minute(child, _) =>
+			s"${dialect.expressionToSQL(miniute)}(${expressionToSQL(child)})}"
+		case second@Second(child, _) =>
+			s"${dialect.expressionToSQL(second)}(${expressionToSQL(child)})"
 		case a@Alias(child, name) =>
 			val qualifierPrefix = a.qualifier.map(_ + ".").getOrElse("")
 			s"${expressionToSQL(child)} AS $qualifierPrefix${dialect.quote(name)}"
-		case GetStructField(a:AttributeReference, _, Some(name)) =>
+		case GetStructField(a: AttributeReference, _, Some(name)) =>
 			dialect.quote(s"${expressionToSQL(a)}.$name")
 		case GetArrayStructFields(child, field, _, _, _) =>
 			dialect.quote(s"${expressionToSQL(child)}.${field.name}")
 		case a: AttributeReference =>
-			val qualifierPrefix = a.qualifier.map(_ + ".").getOrElse("")
-			s"$qualifierPrefix${dialect.maybeQuote(a.name)}"
+			dialect.getAttributeName(a)
 		case c@Cast(child, dataType, _) => dataType match {
 			case _: ArrayType | _: MapType | _: StructType => expressionToSQL(child)
-			case _: DecimalType => s"CAST(${expressionToSQL(child)} AS ${dataTypeToSQL(dataType)})"
-			case _ => expressionToSQL(child)
+			case _ => s"CAST(${expressionToSQL(child)} AS ${dialect.dataTypeToSQL(dataType)})"
+			//      case _: DecimalType => s"CAST(${expressionToSQL(child)} AS ${dialect.dataTypeToSQL(dataType)})"
+			//      case _ => expressionToSQL(child)
 		}
+		case l@StringLocate(substr, str, Literal(1, IntegerType)) =>
+			s"${dialect.expressionToSQL(l)}(${expressionToSQL(substr)}, ${expressionToSQL(str)})"
+		case r@RLike(left, right) =>
+			s"${dialect.expressionToSQL(r)}(${expressionToSQL(left)}, ${expressionToSQL(right)})"
+		case extract@RegExpExtract(subject, regexp, Literal(1, IntegerType)) =>
+			s"${dialect.expressionToSQL(extract)}(${expressionToSQL(subject)}, ${expressionToSQL(regexp)})"
+		case replace@RegExpReplace(subject, regexp, rep) =>
+			s"${dialect.expressionToSQL(replace)}(${expressionToSQL(subject)}, ${expressionToSQL(regexp)}, ${expressionToSQL(rep)})"
+		case last@Last(child, _) =>
+			s"${dialect.expressionToSQL(last)}(${expressionToSQL(child)})"
 		case If(predicate, trueValue, falseValue) =>
 			// calcite
 			s"CASE WHEN ${expressionToSQL(predicate)} THEN ${expressionToSQL(trueValue)} ELSE ${expressionToSQL(falseValue)} END"
@@ -160,10 +189,10 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 			s"coalesce(${children.map(expressionToSQL).mkString(",")})"
 		// mysql
 		/*children.init.foldRight(expressionToSQL(children.last)){
-			case (child, sql) => s"IFNULL(${expressionToSQL(child)}, $sql)"
+		  case (child, sql) => s"IFNULL(${expressionToSQL(child)}, $sql)"
 		}*/
-		case CaseWhenCodegen(branches, elseValue)=>
-			val cases = branches.map { case (c, v) => s" WHEN ${expressionToSQL(c)} THEN ${expressionToSQL(v)}"}.mkString
+		case CaseWhenCodegen(branches, elseValue) =>
+			val cases = branches.map { case (c, v) => s" WHEN ${expressionToSQL(c)} THEN ${expressionToSQL(v)}" }.mkString
 			val elseCase = elseValue.map(" ELSE " + expressionToSQL(_)).getOrElse("")
 			"CASE" + cases + elseCase + " END"
 		case UnscaledValue(child) =>
@@ -174,7 +203,7 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 		case a: AggregateFunction =>
 			s"${a.prettyName}(${a.children.map(expressionToSQL).mkString(", ")})"
 		case literal@Literal(v, t) =>
-			literalToSQL(v, t)
+			dialect.literalToSQL(v, t)
 		case MakeDecimal(child, precision, scala) =>
 			s"CAST(${expressionToSQL(child)} AS DECIMAL($precision, $scala))"
 		case Not(EqualTo(left, right)) =>
@@ -202,7 +231,7 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 			s"${expressionToSQL(b.left)} ${b.sqlOperator} ${expressionToSQL(b.right)}"
 		case s: StringPredicate =>
 			stringPredicate(s)
-		case c@ CheckOverflow(child, _) =>
+		case c@CheckOverflow(child, _) =>
 			expressionToSQL(child)
 		case s@SortOrder(child, direction, nullOrdering, _) =>
 			s"${expressionToSQL(child)} ${direction.sql}"
@@ -220,6 +249,7 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 			logicalPlanToSQL(w.child)
 		)
 	}
+
 	private def aggregateToSQL(a: Aggregate): String = {
 		val groupingSQL = a.groupingExpressions.map(expressionToSQL).mkString(",")
 		val aggregateSQL = if (a.aggregateExpressions.nonEmpty) a.aggregateExpressions.map(expressionToSQL).mkString(", ")
@@ -234,31 +264,6 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 			if (groupingSQL.isEmpty) "" else "GROUP BY",
 			groupingSQL
 		)
-
-	}
-
-	private def projectToSQL(p: Project, isDistinct: Boolean): String = {
-		// TODO sql
-		build(
-			"SELECT",
-			if (isDistinct) "DISTINCT" else "",
-			p.projectList.map(expressionToSQL).mkString(", "),
-			if (p.child == OneRowRelation) "" else "FROM",
-			logicalPlanToSQL(p.child)
-		)
-	}
-
-	def subqueryExpressionToSQL(subquery: Expression): String = subquery match {
-		case Exists(plan, children, _) =>
-			s"EXISTS (${logicalPlanToSQL(finalPlan(plan))})"
-		case ScalarSubquery(plan, children, _) =>
-			s"(${logicalPlanToSQL(finalPlan(plan))})"
-		case ListQuery(plan, children, _) =>
-			s"IN (${logicalPlanToSQL(finalPlan(plan))})"
-	}
-
-	def dataTypeToSQL(dataType: DataType): String = {
-		dataType.sql
 	}
 
 	def stringPredicate(s: StringPredicate): String = s match {
@@ -270,25 +275,14 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 			s"${expressionToSQL(left)} LIKE '%${expressionToSQL(right).stripPrefix("'").stripSuffix("'")}%'"
 	}
 
-	def literalToSQL(value: Any, dataType: DataType): String = (value, dataType) match {
-		case (_, NullType | _: ArrayType | _: MapType | _: StructType) if value == null => "NULL"
-		case (v: UTF8String, StringType) =>  "'" + v.toString.replace("\\", "\\\\").replace("'", "\\'") + "'"
-		case (v: Byte, ByteType) => v + ""
-		case (v: Boolean, BooleanType) => s"'$v'"
-		case (v: Short, ShortType) => v + ""
-		case (v: Long, LongType) => v + ""
-		case (v: Float, FloatType) => v + ""
-		case (v: Double, DoubleType) => v + ""
-		case (v: Decimal, t: DecimalType) => v + ""
-		case (v: Int, DateType) =>s"'${DateTimeUtils.toJavaDate(v)}'"
-		case (v: Long, TimestampType) => s"'${DateTimeUtils.toJavaTimestamp(v)}'"
-		case _ => if (value == null) "NULL" else value.toString
+	def subqueryExpressionToSQL(subquery: Expression): String = subquery match {
+		case Exists(plan, children, _) =>
+			s"EXISTS (${logicalPlanToSQL(finalPlan(plan))})"
+		case ScalarSubquery(plan, children, _) =>
+			s"(${logicalPlanToSQL(finalPlan(plan))})"
+		case ListQuery(plan, children, _) =>
+			s"IN (${logicalPlanToSQL(finalPlan(plan))})"
 	}
-
-	private def build(segments: String*): String =
-		segments.map(_.trim).filter(_.nonEmpty).mkString(" ")
-
-
 
 
 	object Canonicalizer extends RuleExecutor[LogicalPlan] {
@@ -368,6 +362,7 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 				case _ =>
 
 			}
+
 			def traverseExpression(expr: Expression): Unit = {
 				expr.foreach {
 					case ScalarSubquery(plan, _, _) => findLogicalRelation(plan, logicalRelations)
@@ -406,8 +401,8 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 					SubqueryAlias(newSubqueryName(), generateProject)
 			}
 			plan1.transformUp {
-				case l: LogicalRelation =>l
-				case p @Project(_, r: LogicalRelation) =>
+				case l: LogicalRelation => l
+				case p@Project(_, r: LogicalRelation) =>
 					if (isGenerated.contains(p)) {
 						p
 					} else {
@@ -449,7 +444,7 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 		override def apply(plan: LogicalPlan): LogicalPlan = plan transform {
 			case a: Aggregate if a.aggregateExpressions.isEmpty =>
 				a.child
-			case p: Project if p.projectList.isEmpty  =>
+			case p: Project if p.projectList.isEmpty =>
 				p.child
 			case w: Window if w.windowExpressions.isEmpty =>
 				w.child
@@ -515,9 +510,10 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 					}
 					false
 				case u@Union(children) =>
-					hasSelect.zip(children).foreach {case (has, p) if has => {
-						points.add(u -> p)
-					}}
+					hasSelect.zip(children).foreach {
+						case (has, p) if has => points.add(u -> p)
+						case _ =>
+					}
 					false
 				case a => hasSelect.head
 			}
@@ -534,6 +530,7 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 			classOf[LocalLimit] -> 6,
 			classOf[GlobalLimit] -> 7
 		)
+
 		override def apply(plan: LogicalPlan): LogicalPlan = {
 			val points = new mutable.HashSet[LogicalPlan]()
 			findPoint(plan, plan, points)
@@ -577,9 +574,11 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 					(j, false)
 				case u: Union =>
 					u.children.zip(children).foreach {
-						case (start, state) => if (!start.isInstanceOf[LeafNode]) {
+						case (start, state) =>
 							find(start, state, points)
-						}
+						/*if (!start.isInstanceOf[LeafNode]) {
+						  find(start, state, points)
+						}*/
 					}
 					if (u == root) find(u, (u, false), points)
 					(u, false)
@@ -620,6 +619,7 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 			}
 
 		}
+
 		private def find(start: LogicalPlan, state: (LogicalPlan, Boolean), points: mutable.HashSet[LogicalPlan]): Unit = {
 			val hasSelect = state._2
 			if (!hasSelect) {
@@ -644,6 +644,12 @@ class MbSqlBuilder(plan: LogicalPlan, dialect: MbDialect) extends MbLogging {
 	}
 
 
+}
+
+case object MbSqlBuilder {
+	def build(segments: String*): String = {
+		segments.map(_.trim).filter(_.nonEmpty).mkString(" ")
+	}
 }
 
 

@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,12 +24,14 @@ import java.io.{BufferedReader, InputStreamReader}
 import java.util.StringTokenizer
 
 import org.apache.spark.SparkContext
-import org.apache.spark.sql.MixcalContext
+import org.apache.spark.sql.SparkEngine
 import org.apache.spark.sql.resource.{SparkResourceListener, SparkResourceMonitor}
 
 
-class ResourceMonitor {
-	private val mixCalResourceMonitor = MixcalContext.getMixcalResourceMonitor
+class ResourceMonitor(sparkContext: SparkContext) {
+	val sparkListener = new SparkResourceListener(sparkContext.getConf)
+	sparkContext.addSparkListener(sparkListener)
+	private val mixCalResourceMonitor = new SparkResourceMonitor(sparkContext, sparkListener)
 
     def workerTotalMemory: Long = {
         Runtime.getRuntime.totalMemory  // Worker JVM 可使用内存

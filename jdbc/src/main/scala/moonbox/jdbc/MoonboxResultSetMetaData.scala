@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,83 +17,80 @@
  * limitations under the License.
  * >>
  */
-
 package moonbox.jdbc
 
-import java.sql.ResultSetMetaData
+import java.sql.{ResultSetMetaData, SQLException}
 
-import moonbox.util.SchemaUtil
+import moonbox.protocol.util.SchemaUtil
 
 class MoonboxResultSetMetaData(resultSet: MoonboxResultSet,
-                               originalSchemaJson: String
-                              ) extends ResultSetMetaData {
+	jsonSchema: String
+) extends ResultSetMetaData {
 
-  import SchemaUtil._
+	private lazy val sqlTypeSchema: Array[(String, Int, Boolean)] = SchemaUtil.schemaWithSqlType(parsedSchema)
+	private lazy val parsedSchema: Array[(String, String, Boolean)] = SchemaUtil.parse(jsonSchema)
 
-  private lazy val parsedSchema: Array[(String, Int, Boolean)] = schema2SqlType(parse(originalSchemaJson))
-  private lazy val columnCount: Int = parsedSchema.length
+	override def getSchemaName(column: Int) = ""
 
-  override def getSchemaName(column: Int) = ""
+	override def getCatalogName(column: Int) = ""
 
-  override def getCatalogName(column: Int) = resultSet.getStatement.jdbcSession.database
+	override def isSigned(column: Int) = true
 
-  override def isSigned(column: Int) = true
+	override def getColumnLabel(column: Int) = getColumnName(column)
 
-  override def getColumnLabel(column: Int) = parsedSchema(column - 1)._1
+	override def getColumnName(column: Int) = sqlTypeSchema(column - 1)._1
 
-  override def getColumnName(column: Int) = parsedSchema(column - 1)._1
+	override def getColumnTypeName(column: Int) = parsedSchema(column - 1)._2
 
-  override def getColumnTypeName(column: Int) = {
-    val parsed = parse(originalSchemaJson)
-    parsed(column - 1)._2
-  }
+	override def isWritable(column: Int) = false
 
-  override def isWritable(column: Int) = false
+	override def getColumnClassName(column: Int) = {
+		SchemaUtil.typeNameToJavaClassName(getColumnTypeName(column))
+	}
 
-  override def getColumnClassName(column: Int) = null
+	override def isAutoIncrement(column: Int) = false
 
-  override def isAutoIncrement(column: Int) = false
+	override def isReadOnly(column: Int) = true
 
-  override def isReadOnly(column: Int) = true
+	override def isCurrency(column: Int) = false
 
-  override def isCurrency(column: Int) = true
+	override def isSearchable(column: Int) = true
 
-  override def isSearchable(column: Int) = true
+	override def isCaseSensitive(column: Int) = true
 
-  override def isCaseSensitive(column: Int) = true
+	override def getTableName(column: Int) = ""
 
-  override def getTableName(column: Int) = resultSet.getStatement.jdbcSession.table
+	// TODO:
+	override def getColumnType(column: Int) = sqlTypeSchema(column - 1)._2
 
-  override def getColumnType(column: Int) = parsedSchema(column - 1)._2
+	override def isDefinitelyWritable(column: Int) = false
 
-  override def isDefinitelyWritable(column: Int) = false
+	override def getColumnCount = parsedSchema.length
 
-  override def getColumnCount = columnCount
+	override def getPrecision(column: Int) = 0
 
-  override def getPrecision(column: Int) = 0
+	override def getScale(column: Int) = {
+		var scale = 0
+		if (sqlTypeSchema(column - 1)._2 == java.sql.Types.DECIMAL) {
+			val presAndScale = sqlTypeSchema(column - 1)._1.stripPrefix("decimal(").stripSuffix(")").split(",")
+			if (presAndScale.length == 2) {
+				scale = presAndScale(1).trim.toInt
+			}
+		}
+		scale
+	}
 
-  override def getScale(column: Int) = {
-    if (parsedSchema(column - 1)._2 != java.sql.Types.DECIMAL)
-      0
-    else {
-      val presAndScale = parsedSchema(column - 1)._1.stripPrefix("decimal(").stripSuffix(")").split(",")
-      if (presAndScale.length == 2)
-        presAndScale(1).toInt
-      else 0
-    }
-  }
+	override def isNullable(column: Int) = {
+		if (sqlTypeSchema(column - 1)._3) ResultSetMetaData.columnNullable
+		else ResultSetMetaData.columnNoNulls
+	}
 
-  override def isNullable(column: Int) = {
-    if (parsedSchema(column - 1)._3)
-      ResultSetMetaData.columnNullable
-    else
-      ResultSetMetaData.columnNoNulls
-  }
+	override def getColumnDisplaySize(column: Int) = 0
 
-  override def getColumnDisplaySize(column: Int) = 0
+	override def unwrap[T](iface: Class[T]) = {
+		if (isWrapperFor(iface)) this.asInstanceOf[T]
+		else throw new SQLException("unwrap exception")
+	}
 
-  override def unwrap[T](iface: Class[T]) = null.asInstanceOf[T]
-
-  override def isWrapperFor(iface: Class[_]) = false
-
+	override def isWrapperFor(iface: Class[_]) = iface != null && iface.isAssignableFrom(getClass)
 }

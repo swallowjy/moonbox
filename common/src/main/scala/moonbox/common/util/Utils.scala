@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,14 +22,18 @@ package moonbox.common.util
 
 import java.io.{ByteArrayInputStream, ObjectInputStream, ObjectOutputStream, _}
 import java.lang.reflect.Field
+import java.net.{Inet4Address, InetAddress, NetworkInterface}
 import java.nio.charset.StandardCharsets
 import java.util.regex.Pattern
 import java.util.{Collections, Date, Properties, Map => JMap}
 
 import com.typesafe.config.{Config, ConfigFactory}
 import moonbox.common.MbLogging
+import org.apache.commons.io.FileUtils
 
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ArrayBuffer
+import scala.io.Source
 
 object Utils extends MbLogging {
 
@@ -99,6 +103,15 @@ object Utils extends MbLogging {
 			.map(key => (key, System.getProperty(key))).toMap
 	}
 
+	def getMoonboxHome: String = {
+		sys.env.getOrElse[String]("MOONBOX_HOME",
+			throw new Exception("MOONBOX_HOME does not config."))
+	}
+
+	def getMoonboxHomeOption: Option[String] = {
+		sys.env.get("MOONBOX_HOME")
+	}
+
 	def getDefaultLogConfig(env: Map[String, String] = sys.env): Option[String] = {
 		val configDir: Option[String] = env.get("MOONBOX_CONF_DIR").orElse(env.get("MOONBOX_HOME")
 			.map {t => s"$t${File.separator}conf"})
@@ -163,21 +176,6 @@ object Utils extends MbLogging {
 		}
 	}
 
-	def getRuntimeJars(env: Map[String, String] = sys.env): List[String] = {
-		val pluginDir: Option[String] = env.get("MOONBOX_CONF_DIR").orElse(env.get("MOONBOX_HOME").map {t => s"$t${File.separator}runtime"})
-		if(pluginDir.isEmpty) {
-			//TODO
-			throw new Exception("$MOONBOX_HOME does not exist")
-		} else {
-			val lib = new File(pluginDir.get)
-			if (lib.exists()) {
-				val confFile = lib.listFiles().filter {_.isFile}.map (_.getAbsolutePath)
-				confFile.toList
-			} else {
-				List()
-			}
-		}
-	}
 
 	def delete (file: File) {
 		if (file == null) {
@@ -193,8 +191,63 @@ object Utils extends MbLogging {
 		}
 	}
 
-	def checkHost(host: String, message: String): Unit = {
-		assert(host.indexOf(':') == -1, message)
+	private val customHostname: Option[String] = sys.env.get("MOONBOX_LOCAL_HOSTNAME")
+
+	private lazy val localIpAddress: InetAddress = findLocalInetAddress()
+
+	private def findLocalInetAddress(): InetAddress = {
+		val defaultIpOverride = System.getenv("MOONBOX_LOCAL_IP")
+		if (defaultIpOverride != null) {
+			InetAddress.getByName(defaultIpOverride)
+		} else {
+			val address = InetAddress.getLocalHost
+			if (address.isLoopbackAddress) {
+				// Address resolves to something like 127.0.1.1, which happens on Debian; try to find
+				// a better address using the local network interfaces
+				// getNetworkInterfaces returns ifs in reverse order compared to ifconfig output order
+				// on unix-like system. On windows, it returns in index order.
+				// It's more proper to pick ip address following system output order.
+				val activeNetworkIFs = NetworkInterface.getNetworkInterfaces.asScala.toSeq
+				val reOrderedNetworkIFs = activeNetworkIFs.reverse
+
+				for (ni <- reOrderedNetworkIFs) {
+					val addresses = ni.getInetAddresses.asScala
+						.filterNot(addr => addr.isLinkLocalAddress || addr.isLoopbackAddress).toSeq
+					if (addresses.nonEmpty) {
+						val addr = addresses.find(_.isInstanceOf[Inet4Address]).getOrElse(addresses.head)
+						// because of Inet6Address.toHostName may add interface at the end if it knows about it
+						val strippedAddress = InetAddress.getByAddress(addr.getAddress)
+						// We've found an address that looks reasonable!
+						logWarning("Your hostname, " + InetAddress.getLocalHost.getHostName + " resolves to" +
+							" a loopback address: " + address.getHostAddress + "; using " +
+							strippedAddress.getHostAddress + " instead (on interface " + ni.getName + ")")
+						logWarning("Set MOONBOX_LOCAL_IP if you need to bind to another address")
+						return strippedAddress
+					}
+				}
+				logWarning("Your hostname, " + InetAddress.getLocalHost.getHostName + " resolves to" +
+					" a loopback address: " + address.getHostAddress + ", but we couldn't find any" +
+					" external IP address!")
+				logWarning("Set MOONBOX_LOCAL_IP if you need to bind to another address")
+			}
+			address
+		}
+	}
+
+	def checkHost(host: String): Unit = {
+		assert(host != null && host.indexOf(':') == -1, s"Expected hostname but get $host")
+	}
+
+	def checkPort(address: String): Unit = {
+		assert(address != null && address.indexOf(":") != -1, s"Expected host:port but get $address")
+	}
+
+	def getIpByName(host: String): String = {
+		InetAddress.getByName(host).getHostAddress
+	}
+
+	def localHostName(): String = {
+		customHostname.getOrElse(localIpAddress.getHostAddress)
 	}
 
 	def now: Long = System.currentTimeMillis()
@@ -215,7 +268,6 @@ object Utils extends MbLogging {
 		simpleFormat.format(date)
 	}
 
-	// copy from spark
 	def escapeLikeRegex(pattern: String): String = {
 		val in = pattern.toIterator
 		val out = new StringBuilder()

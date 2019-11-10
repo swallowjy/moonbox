@@ -8,7 +8,7 @@
     <artifactId>moonbox-parent_2.11</artifactId>
     <packaging>pom</packaging>
     <name>Moonbox Project Parent POM</name>
-    <version>0.2.0-SNAPSHOT</version>
+    <version>0.3.0-beta</version>
 
     <licenses>
         <license>
@@ -20,26 +20,45 @@
 
     <modules>
         <module>common</module>
-        <module>localservice</module>
+        <module>network</module>
+        <module>launcher</module>
+        <module>testkit</module>
+        <module>protocol</module>
+        <module>catalog</module>
         <module>catalyst</module>
         <module>core</module>
         <module>grid</module>
         <module>client</module>
         <module>repl</module>
         <module>jdbc</module>
-        <module>testkit</module>
+        <module>thriftserver</module>
+
         <module>external/spark-hbase-connector</module>
         <module>external/spark-presto-connector</module>
-        <module>dataadapter/elasticsearch-adapter</module>
-        <module>dataadapter/mongo-adapter</module>
-        <module>dataadapter/kudu-adapter</module>
-        <module>dataadapter/mysql-adapter</module>
-        <module>dataadapter/presto-adapter</module>
-        <module>dataadapter/oracle-adapter</module>
-        <module>dataadapter/sqlserver-adapter</module>
-        <module>dataadapter/hbase-adapter</module>
-        <module>dataadapter/cassandra-adapter</module>
+        <module>external/spark-kafka-0-10-sql</module>
+
+        <module>external/elasticsearch-adapter</module>
+        <module>external/mongo-adapter</module>
+        <module>external/kudu-adapter</module>
+        <module>external/mysql-adapter</module>
+        <module>external/presto-adapter</module>
+        <module>external/oracle-adapter</module>
+        <module>external/sqlserver-adapter</module>
+        <module>external/hbase-adapter</module>
+        <module>external/cassandra-adapter</module>
+        <module>external/clickhouse-adapter</module>
+        <module>external/redis-adapter</module>
+        <module>external/kafka-adapter</module>
+        <module>external/moonbox-zeppelin-interpreter-0.7</module>
+        <module>external/moonbox-zeppelin-interpreter-0.8</module>
+
+        <module>applications/spark-batch</module>
+        <module>applications/spark-interactive</module>
+        <module>applications/hive-batch</module>
+        <module>applications/hive-interactive</module>
+
         <module>assembly</module>
+
     </modules>
 
     <properties>
@@ -58,6 +77,8 @@
         <antlr4.version>4.5.3</antlr4.version>
         <fastparse.version>1.0.0</fastparse.version>
         <akka.version>2.4.16</akka.version>
+        <netty.version>4.0.43.Final</netty.version>
+        <protobuf.version>3.6.1</protobuf.version>
         <curator.version>2.6.0</curator.version>
         <spark.version>2.2.0</spark.version>
         <slick.version>3.2.1</slick.version>
@@ -66,7 +87,11 @@
         <json4s-jackson.version>3.2.11</json4s-jackson.version>
         <akka-http-json4s.version>1.11.0</akka-http-json4s.version>
         <cassandra-connector.version>2.0.7</cassandra-connector.version>
-        <kudu.version>1.7.0</kudu.version>
+        <kudu.version>1.8.0</kudu.version>
+        <esv5.version>5.3.2</esv5.version>
+        <esv5-spark.version>5.3.2</esv5-spark.version>
+        <mongo.version>3.6.0</mongo.version>
+        <mongo-spark.version>2.2.0</mongo-spark.version>
     </properties>
 
     <dependencyManagement>
@@ -85,6 +110,16 @@
             <dependency>
                 <groupId>org.apache.spark</groupId>
                 <artifactId>spark-core_2.11</artifactId>
+                <version>${spark.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-launcher_2.11</artifactId>
+                <version>${spark.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-catalyst_2.11</artifactId>
                 <version>${spark.version}</version>
             </dependency>
             <dependency>
@@ -119,15 +154,9 @@
             </dependency>
             <dependency>
                 <groupId>com.typesafe.akka</groupId>
-                <artifactId>akka-cluster_${scala.library}</artifactId>
+                <artifactId>akka-remote_${scala.library}</artifactId>
                 <version>${akka.version}</version>
             </dependency>
-            <dependency>
-                <groupId>com.typesafe.akka</groupId>
-                <artifactId>akka-cluster-tools_${scala.library}</artifactId>
-                <version>${akka.version}</version>
-            </dependency>
-
             <dependency>
                 <groupId>com.typesafe.akka</groupId>
                 <artifactId>akka-http-core_2.11</artifactId>
@@ -161,6 +190,23 @@
                 <artifactId>curator-framework</artifactId>
                 <version>${curator.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.apache.curator</groupId>
+                <artifactId>curator-recipes</artifactId>
+                <version>${curator.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-all</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>${protobuf.version}</version>
+            </dependency>
+
             <dependency>
                 <groupId>log4j</groupId>
                 <artifactId>log4j</artifactId>
@@ -246,7 +292,7 @@
             <dependency>
                 <groupId>com.cronutils</groupId>
                 <artifactId>cron-utils</artifactId>
-                <version>7.0.2</version>
+                <version>7.0.4</version>
             </dependency>
 
             <dependency>
@@ -273,6 +319,11 @@
                     <groupId>org.antlr</groupId>
                     <artifactId>antlr4-maven-plugin</artifactId>
                     <version>${antlr4.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>build-helper-maven-plugin</artifactId>
+                    <version>3.0.0</version>
                 </plugin>
                 <plugin>
                     <groupId>net.alchim31.maven</groupId>
@@ -472,13 +523,13 @@
                 <plugin>
                     <groupId>org.jasig.maven</groupId>
                     <artifactId>maven-notice-plugin</artifactId>
-                    <version>1.0.6.1</version>
+                    <version>1.1.0</version>
                     <configuration>
                         <generateChildNotices>false</generateChildNotices>
                         <noticeTemplate>https://source.jasig.org/licenses/NOTICE.template</noticeTemplate>
                         <licenseMapping>
-                            <param>https://source.jasig.org/licenses/license-mappings.xml</param>
                             <param>file://${main.basedir}/dev/license-mappings.xml</param>
+                            <param>https://source.jasig.org/licenses/license-mappings.xml</param>
                         </licenseMapping>
                     </configuration>
                 </plugin>

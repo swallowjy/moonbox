@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,13 +20,12 @@
 
 package org.apache.spark.sql.datasys
 
-import moonbox.core.datasys.{DataSystem, DataSystemRegister, Pushdownable}
-import moonbox.core.execution.standalone.DataTable
+import moonbox.core.datasys._
 import org.apache.spark.sql.catalyst.plans.JoinType
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 
-class SparkDataSystem extends DataSystem(Map()) with Pushdownable with DataSystemRegister {
+class SparkDataSystem extends DataSystem(Map()) with Pushdownable {
 
 	override def isSupportAll: Boolean = true
 
@@ -53,11 +52,8 @@ class SparkDataSystem extends DataSystem(Map()) with Pushdownable with DataSyste
 
 	override def tableName(): String = {  throw new UnsupportedOperationException("unsupport method tableName") }
 
-	override def buildQuery(plan: LogicalPlan): DataTable = {
+	override def buildQuery(plan: LogicalPlan, sparkSession: SparkSession): DataTable = {
 		throw new UnsupportedOperationException(s"unsupport call method buildQuery in spark datasystem")
 	}
 
-	override def shortName(): String = "spark"
-
-	override def dataSource(): String = ""
 }

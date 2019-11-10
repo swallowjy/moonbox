@@ -5,7 +5,7 @@
     <parent>
         <artifactId>moonbox-parent_2.11</artifactId>
         <groupId>edp.moonbox</groupId>
-        <version>0.2.0-SNAPSHOT</version>
+        <version>0.3.0-beta</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -15,27 +15,12 @@
 
     <properties>
         <main.basedir>${project.parent.basedir}</main.basedir>
-        <esv5.version>5.3.2</esv5.version>
-        <esv5-spark.version>5.3.2</esv5-spark.version>
-        <mongo.version>3.6.0</mongo.version>
-        <mongo-spark.version>2.2.0</mongo-spark.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>org.antlr</groupId>
             <artifactId>antlr4-runtime</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>edp.moonbox</groupId>
-            <artifactId>moonbox-common_2.11</artifactId>
-            <version>${project.version}</version>
-            <exclusions>
-                <exclusion>
-                    <artifactId>netty</artifactId>
-                    <groupId>*</groupId>
-                </exclusion>
-            </exclusions>
         </dependency>
 
         <dependency>
@@ -47,53 +32,47 @@
                     <artifactId>antlr4-runtime</artifactId>
                 </exclusion>
             </exclusions>
+            <scope>provided</scope>
         </dependency>
 
-        <dependency>
+        <!--<dependency>
             <groupId>org.elasticsearch</groupId>
             <artifactId>elasticsearch-spark-20_2.11</artifactId>
             <version>${esv5-spark.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.spark</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
+            <scope>provided</scope>
+        </dependency>-->
+        <dependency>
+            <groupId>org.elasticsearch</groupId>
+            <artifactId>elasticsearch-spark-20_2.11</artifactId>
+            <version>5.6.16</version>
+            <scope>provided</scope>
         </dependency>
 
-        <!--<dependency>-->
-        <!--<groupId>org.elasticsearch</groupId>-->
-        <!--<artifactId>elasticsearch</artifactId>-->
-        <!--</dependency>-->
-
-        <!--<dependency>-->
-        <!--<groupId>org.elasticsearch.client</groupId>-->
-        <!--<artifactId>transport</artifactId>-->
-        <!--<version>${esv5.version}</version>-->
-        <!--</dependency>-->
-
-        <dependency>
+        <!--<dependency>
             <groupId>org.elasticsearch.client</groupId>
             <artifactId>rest</artifactId>
             <version>${esv5.version}</version>
+            <scope>provided</scope>
+        </dependency>-->
+        <dependency>
+            <groupId>org.elasticsearch.client</groupId>
+            <artifactId>elasticsearch-rest-client</artifactId>
+            <version>5.6.16</version>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>org.json</groupId>
             <artifactId>json</artifactId>
             <version>20160212</version>
+            <scope>provided</scope>
         </dependency>
 
-        <!--mongo-->
-        <dependency>
-            <groupId>org.mongodb.spark</groupId>
-            <artifactId>mongo-spark-connector_2.11</artifactId>
-            <version>${mongo-spark.version}</version>
-        </dependency>
         <dependency>
             <groupId>org.mongodb</groupId>
             <artifactId>mongo-java-driver</artifactId>
             <version>${mongo.version}</version>
+            <scope>provided</scope>
         </dependency>
 
     </dependencies>

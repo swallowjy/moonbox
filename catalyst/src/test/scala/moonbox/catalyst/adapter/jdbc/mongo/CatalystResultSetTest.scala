@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ package moonbox.catalyst.adapter.jdbc.mongo
 import java.sql.{Connection, DriverManager, ResultSet, Statement}
 import java.util.Properties
 
-import moonbox.catalyst.adapter.jdbc.CatalystResultSet
+import moonbox.catalyst.jdbc.CatalystResultSet
 import org.bson.BsonTimestamp
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 
@@ -43,7 +43,7 @@ class CatalystResultSetTest extends FunSuite with BeforeAndAfterAll {
 
 
   override protected def beforeAll() = {
-    Class.forName("moonbox.catalyst.adapter.jdbc.Driver")
+    Class.forName("moonbox.catalyst.jdbc.Driver")
   }
 
   override protected def afterAll() = super.afterAll()
@@ -87,7 +87,7 @@ class CatalystResultSetTest extends FunSuite with BeforeAndAfterAll {
     sql = "select mytimestamp from timestamp limit 20"
     res = stmt.executeQuery(sql)
     while (res.next()) {
-      println("Mongo Timestamp: " + res.getObject(1).asInstanceOf[BsonTimestamp])
+      println("Mongo Timestamp: " + res.getObject(1))
     }
   }
 
@@ -339,6 +339,17 @@ class CatalystResultSetTest extends FunSuite with BeforeAndAfterAll {
     while (res.next()) {
       println(res.getObject(1))
       println(res.getObject(2))
+    }
+  }
+
+  test("limit 0") {
+    connection = DriverManager.getConnection("jdbc:mongo://localhost:27017/test?collection=books&user=yan&password=123456", props)
+    stmt = connection.createStatement()
+    sql = "select * from books where 1=0 limit 0"
+    res = stmt.executeQuery(sql)
+    println("-------------------local_relation-------------------")
+    while (res.next()) {
+      println(res.getObject(1))
     }
   }
 

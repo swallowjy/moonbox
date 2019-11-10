@@ -3,7 +3,7 @@
   <parent>
     <artifactId>moonbox-parent_2.11</artifactId>
     <groupId>edp.moonbox</groupId>
-    <version>0.2.0-SNAPSHOT</version>
+    <version>0.3.0-beta</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
   <modelVersion>4.0.0</modelVersion>
@@ -20,6 +20,41 @@
             <goals>
               <goal>shade</goal>
             </goals>
+            <configuration>
+              <artifactSet>
+                <excludes>
+                  <exclude>org.scalatest:scalatest_2.11</exclude>
+                  <exclude>org.scala-lang:*</exclude>
+                </excludes>
+              </artifactSet>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+              <relocations>
+                <relocation>
+                  <pattern>io.netty</pattern>
+                  <shadedPattern>hbase.io.netty</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>org.jboss.netty</pattern>
+                  <shadedPattern>hbase.org.jboss.netty</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>com.google.protobuf</pattern>
+                  <shadedPattern>hbase.com.google.protobuf</shadedPattern>
+                </relocation>
+              </relocations>
+              <transformers>
+                <transformer />
+              </transformers>
+            </configuration>
           </execution>
         </executions>
         <configuration>
@@ -35,7 +70,7 @@
   </build>
   <profiles>
     <profile>
-      <id>hbase</id>
+      <id>hbase-filter</id>
       <build>
         <plugins>
           <plugin>
@@ -161,6 +196,10 @@
           <groupId>commons-net</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>scala-library</artifactId>
+          <groupId>org.scala-lang</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>json4s-jackson_2.11</artifactId>
           <groupId>org.json4s</groupId>
         </exclusion>
@@ -233,8 +272,16 @@
           <groupId>net.sf.py4j</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>spark-tags_2.11</artifactId>
+          <groupId>org.apache.spark</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>commons-crypto</artifactId>
           <groupId>org.apache.commons</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>unused</artifactId>
+          <groupId>org.spark-project.spark</groupId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -272,12 +319,40 @@
           <groupId>org.apache.parquet</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>spark-tags_2.11</artifactId>
+          <groupId>org.apache.spark</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>jackson-databind</artifactId>
           <groupId>com.fasterxml.jackson.core</groupId>
         </exclusion>
         <exclusion>
           <artifactId>xbean-asm5-shaded</artifactId>
           <groupId>org.apache.xbean</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>unused</artifactId>
+          <groupId>org.spark-project.spark</groupId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-streaming_2.11</artifactId>
+      <version>2.2.0</version>
+      <scope>provided</scope>
+      <exclusions>
+        <exclusion>
+          <artifactId>scala-library</artifactId>
+          <groupId>org.scala-lang</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>spark-tags_2.11</artifactId>
+          <groupId>org.apache.spark</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>unused</artifactId>
+          <groupId>org.spark-project.spark</groupId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -362,12 +437,6 @@
       </exclusions>
     </dependency>
     <dependency>
-      <groupId>com.google.protobuf</groupId>
-      <artifactId>protobuf-java</artifactId>
-      <version>2.5.0</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
       <groupId>commons-logging</groupId>
       <artifactId>commons-logging</artifactId>
       <version>1.2</version>
@@ -414,6 +483,10 @@
         <exclusion>
           <artifactId>scala-parser-combinators_2.11</artifactId>
           <groupId>org.scala-lang.modules</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>scala-library</artifactId>
+          <groupId>org.scala-lang</groupId>
         </exclusion>
       </exclusions>
     </dependency>

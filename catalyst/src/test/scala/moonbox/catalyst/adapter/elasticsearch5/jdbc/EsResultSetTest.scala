@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import org.scalatest.{BeforeAndAfterAll, FunSuite}
 class EsResultSetTest extends FunSuite with BeforeAndAfterAll{
 
     override protected def beforeAll() :Unit = {
-        Class.forName("moonbox.catalyst.adapter.jdbc.Driver")
+        Class.forName("moonbox.catalyst.jdbc.Driver")
     }
 
     def printArray(a: Array[Any]): Unit = {

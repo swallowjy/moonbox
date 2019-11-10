@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,7 @@
 
 package moonbox.grid.deploy.master
 
-import moonbox.grid.JobInfo
-import moonbox.grid.deploy.worker.WorkerInfo
+import moonbox.grid.deploy.app.{AppInfo, DriverInfo}
 
 import scala.reflect.ClassTag
 
@@ -32,24 +31,43 @@ abstract class PersistenceEngine {
 
 	protected def read[T: ClassTag](prefix: String): Seq[T]
 
-	final def readJobs(): Seq[JobInfo] = {
-		read[JobInfo]("jobs")
+	final def readPersistedData() = {
+		(readDrivers(), readWorkers(), readApplication())
+	}
+	final def readDrivers(): Seq[DriverInfo] = {
+		read[DriverInfo]("drivers")
 	}
 
-	final def addJob(job: JobInfo): Unit = {
-		persist("jobs/" + job.jobId, job)
+	final def readWorkers(): Seq[WorkerInfo] = {
+		read[WorkerInfo]("workers")
 	}
 
-	final def removeJob(job: JobInfo): Unit = {
-		unpersist("jobs/" + job.jobId)
+	final def readApplication(): Seq[AppInfo] = {
+		read[AppInfo]("apps")
 	}
 
-	final def addWorker(worker: WorkerInfo): Unit = {
-		persist("workers/" + worker.id, worker)
+	final def addDriver(driver: DriverInfo): Unit = {
+		persist("drivers/" + driver.id, driver)
 	}
 
-	final def removeWorker(worker: WorkerInfo): Unit = {
-		unpersist("workers/" + worker.id)
+	final def removeDriver(driver: DriverInfo): Unit = {
+		unpersist("drivers/" + driver.id)
+	}
+
+	final def addWorker(node: WorkerInfo): Unit = {
+		persist("workers/" + node.id, node)
+	}
+
+	final def removeWorker(node: WorkerInfo): Unit = {
+		unpersist("workers/" + node.id)
+	}
+
+	final def addApplication(app: AppInfo): Unit = {
+		persist("apps/" + app.id, app)
+	}
+
+	final def removeApplication(app: AppInfo): Unit = {
+		unpersist("apps/" + app.id)
 	}
 
 	def exist(path: String): Boolean

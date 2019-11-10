@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,6 +74,7 @@ object MapFunctions {
     val document = new BsonDocument()
     row.schema.fields.zipWithIndex.foreach({
       case (field, i) if row.isNullAt(i) => if (field.dataType == NullType) document.append(field.name, new BsonNull())
+      case (field, i) if field.name == "_id" => document.append(field.name, new BsonObjectId(new org.bson.types.ObjectId(row.getString(i))))
       case (field, i)                    => document.append(field.name, convertToBsonValue(row.get(i), field.dataType))
     })
     document

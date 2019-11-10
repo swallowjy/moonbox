@@ -5,11 +5,9 @@ title: Overview
 description: Moonbox MOONBOX_VERSION_SHORT documentation homepage
 ---
 
-> 来自[宜信技术研发中心](http://www.creditease.com)的计算服务平台
+**Moonbox是一个DVtaaS（Data Virtualization as a Service）平台解决方案。**
 
-**Moonbox 是一个DaaS (Data Virtualization as a Service) 平台解决方案。**
-
-Moonbox面向数据仓库工程师/数据分析师/数据科学家等，致力于提供数据虚拟化解决方案。既可作为数据应用底层数据查询计算统一入口，也可作为逻辑数据仓库与现有数据仓库互补。用户只需通过统一SQL服务调用和Moonbox交互，即可透明屏蔽异构数据系统异构交互方式，轻松实现跨异构数据系统Adhoc混算。
+Moonbox基于数据虚拟化设计思想，致力于提供批量计算服务解决方案。Moonbox负责屏蔽底层数据源的物理和使用细节，为用户带来虚拟数据库般使用体验，用户只需通过统一SQL语言，即可透明实现跨异构数据系统混算和写出。此外Moonbox还提供数据服务、数据管理、数据工具、数据开发等基础支持，可支撑更加敏捷和灵活的数据应用架构和逻辑数仓实践。
 
 ## Philosophy
 
@@ -50,10 +48,10 @@ Moonbox面向数据仓库工程师/数据分析师/数据科学家等，致力�
 
   - rest api
 
-    以restful api的方式提供计算服务，支持batch、adhoc模式，支持同步和异步方式。
+    以restful api的方式提供batch作业提交、查询作业执行状态、取消作业服务。
   - jdbc
 
-    对jdbc接口的实现，使用户拥有数据库般的使用体验。
+    提供jdbc驱动，可以使用jdbc编程访问, 使用户拥有数据库般的使用体验。
   - odbc
 
     提供odbc支持，用户可以使用sas连接moonbox进行数据分析。
@@ -69,19 +67,20 @@ Moonbox面向数据仓库工程师/数据分析师/数据科学家等，致力�
 
 - **接入层**
 
-  接入层包括http server、tcp server和thrift server，实现客户端接入，并进行用户登录认证，支持内置用户名密码认证方式和ldap集成认证方式。
+  接入层包括http server、tcp server和thrift server，实现客户端接入，并进行用户登录认证。
 
-- **核心功能层**
+- **分布式服务层**
 
-  Grid是Moonbox核心功能层。Grid使用master-slave集群工作模式，支持master主备切换。Grid有Master、Worker、Runner三种角色：
+  Grid是Moonbox分布式服务层。Grid使用master-slave集群工作模式，支持master主备切换。Grid有Master、Worker、App三种角色：
 
-  - master负责接收所有的用户请求，根据请求模式（adhoc/batch）将请求调度到合适的worker上。
-  - worker负责runner的生成和销毁，将请求分配给合适runner。
-  - runner处理用户发过来的请求，包括用户体系管理操作、权限管理操作、SQL解析、下推优化、执行引擎选择等，并向存储/计算层提交真正的计算任务。
+  - Master负责接收所有的用户请求，根据请求模式（adhoc/batch）将请求调度到合适的App上。
+  - Worker向Master注册,负责该节点上App的启动和停止，每个Worker节点可以启动多个不同种类的App。
+  - App也会向Master注册,App是真正处理计算的角色,可以是一个Spark App, 也可以是其他自定义的App。
 
-- **存储/计算层**
 
-  存储/计算层是计算正真发生的地方。Moonbox使用Spark作为混算引擎，支持standalone和yarn运行模式。当计算逻辑可以完全下推到数据源计算时，Moonbox将计算任务直接mapping成数据源的查询语言进行下推计算，以减小启动分布式作业的开销。数据源除了可以是hdfs这种纯存储系统，mysql、elasticsearch这种带计算能力的存储系统，还可以是presto等计算引擎，Moonbox将他们统一视为数据源。
+- **计算/存储层**
+
+  Moonbox默认使用Spark作为计算引擎，将一个常驻的Spark作业称之为一个App, 支持standalone和yarn运行模式。Spark App处理用户发过来的请求，包括用户体系管理操作、权限管理操作、SQL解析、下推优化、执行引擎选择等，并提交真正的计算任务。当计算逻辑可以完全下推到数据源计算时，Moonbox将计算任务直接mapping成数据源的查询语言进行下推计算，以减小启动分布式作业的开销。数据源除了可以是hdfs这种纯存储系统，mysql、elasticsearch这种带计算能力的存储系统，还可以是presto等计算引擎，Moonbox将他们统一视为数据源。
 
 ## Feature
 

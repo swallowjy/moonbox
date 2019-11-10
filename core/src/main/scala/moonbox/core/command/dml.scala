@@ -2,7 +2,7 @@
  * <<
  * Moonbox
  * ==
- * Copyright (C) 2016 - 2018 EDP
+ * Copyright (C) 2016 - 2019 EDP
  * ==
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,373 +20,483 @@
 
 package moonbox.core.command
 
+import java.util.Locale
+
+import moonbox.catalog._
+import moonbox.common.MbLogging
 import moonbox.common.util.Utils
-import moonbox.core.catalog._
-import moonbox.core.{MbFunctionIdentifier, MbSession, MbTableIdentifier, TablePrivilegeManager}
+import moonbox.core._
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.errors.TreeNodeException
+import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference}
+import org.apache.spark.sql.catalyst.{FunctionIdentifier, TableIdentifier}
 import org.apache.spark.sql.optimizer.WholePushdown
+import org.apache.spark.sql.types.StringType
 
 import scala.collection.mutable.ArrayBuffer
 
 sealed trait DML
 
 case class UseDatabase(db: String) extends MbRunnableCommand with DML {
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val currentDb = mbSession.catalog.getDatabase(ctx.organizationId, db)
-		ctx.databaseId = currentDb.id.get
-		ctx.databaseName = currentDb.name
-		ctx.isLogical = currentDb.isLogical
-		if (!mbSession.mixcal.sparkSession.sessionState.catalog.databaseExists(currentDb.name)) {
-			mbSession.mixcal.sqlToDF(s"create database if not exists ${currentDb.name}")
-		}
-		mbSession.mixcal.sparkSession.catalog.setCurrentDatabase(ctx.databaseName)
-		Seq.empty[Row]
-	}
-}
 
-case class SetVariable(name: String, value: String, isGlobal: Boolean)
-	extends MbRunnableCommand with DML {
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		// TODO
-		if (isGlobal) {
-			throw new UnsupportedOperationException("Set global configuration doesn't support now.")
-		} else {
-			mbSession.setVariable(name, value)
-		}
-		Seq.empty[Row]
-	}
-}
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
 
-case class ShowVariables(pattern: Option[String]) extends MbRunnableCommand with DML {
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val variables = pattern.map { p =>
-			mbSession.getVariables.filterKeys(key =>
-				Utils.escapeLikeRegex(p).r.pattern.matcher(key).matches()).toSeq
-		}.getOrElse {
-			mbSession.getVariables.toSeq
-		}
-		val sortedVariables = variables.sortWith { case ((k1, _), (k2, _)) => k1 < k2}
-		sortedVariables.map { case (k, v) =>
-			Row(s"$k : $v")
-		}.foldRight[List[Row]](Nil) { case (elem, res) =>
-			elem :: res
-		}
-	}
+    mbSession.catalog.setCurrentDb(db)
+    mbSession.engine.registerDatabase(db)
+    mbSession.engine.setCurrentDatabase(db)
+    Seq.empty[Row]
+
+  }
 }
 
 case class ShowDatabases(
-	pattern: Option[String]) extends MbRunnableCommand with DML {
+                          pattern: Option[String]) extends MbRunnableCommand with DML {
 
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val databases = pattern.map { p =>
-			mbSession.catalog.listDatabase(ctx.organizationId, p)
-		}.getOrElse(mbSession.catalog.listDatabase(ctx.organizationId))
-		databases.map { d => Row(d.name)}
-	}
+  override def output: Seq[Attribute] = {
+    AttributeReference("DATABASE_NAME", StringType, nullable = false)() ::
+      AttributeReference("DATABASE_TYPE", StringType, nullable = false)() :: Nil
+  }
+
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+    mbSession.catalog.listDatabase(pattern).map { d =>
+      Row(d.name, if (d.isLogical) "logical" else "physical")
+    }
+  }
+
 }
 
 case class ShowTables(
-	database: Option[String],
-	pattern: Option[String]) extends MbRunnableCommand with DML {
+                       database: Option[String],
+                       pattern: Option[String]) extends MbRunnableCommand with DML {
 
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val databaseId = database.map(db => mbSession.catalog.getDatabase(ctx.organizationId, db).id.get)
-		    .getOrElse(ctx.databaseId)
-		val tables = pattern.map { p =>
-			mbSession.catalog.listTables(databaseId, p)
-		}.getOrElse(mbSession.catalog.listTables(databaseId))
-		tables.map { t => Row(t.name) }
-	}
-}
+  override def output = {
+    AttributeReference("TABLE_NAME", StringType, nullable = false)() ::
+      AttributeReference("TABLE_TYPE", StringType, nullable = false)() :: Nil
+  }
 
-case class ShowViews(
-	database: Option[String],
-	pattern: Option[String]) extends MbRunnableCommand with DML {
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
 
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val databaseId = database.map(db => mbSession.catalog.getDatabase(ctx.organizationId, db).id.get)
-			.getOrElse(ctx.databaseId)
-		val views = pattern.map { p =>
-			mbSession.catalog.listViews(databaseId, p)
-		}.getOrElse(mbSession.catalog.listViews(databaseId))
-		views.map { v => Row(v.name) }
-	}
+    import mbSession.catalog._
+
+    val result = new ArrayBuffer[Row]()
+
+    val db = database.getOrElse(getCurrentDb)
+
+    // tables
+    val tables = mbSession.catalog.listTables(db, pattern)
+    result.append(tables.map(t => Row(t.name, t.tableType.name.toLowerCase)): _*)
+
+    // temp views
+    val temp = pattern.map { p =>
+      mbSession.engine.catalog.listTables("global_temp", p)
+    }.getOrElse {
+      mbSession.engine.catalog.listTables("global_temp")
+    }
+    result.append(temp.map(tv => Row(tv.table, "temp_view")): _*)
+
+    result
+  }
 }
 
 case class ShowFunctions(
-	database: Option[String],
-	pattern: Option[String]) extends MbRunnableCommand with DML {
+                          database: Option[String],
+                          pattern: Option[String],
+                          userFunc: Boolean,
+                          builtInFunc: Boolean
+                        ) extends MbRunnableCommand with DML {
 
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val databaseId = database.map(db => mbSession.catalog.getDatabase(ctx.organizationId, db).id.get)
-			.getOrElse(ctx.databaseId)
-		val functions = pattern.map { p =>
-			mbSession.catalog.listFunctions(databaseId, p)
-		}.getOrElse(mbSession.catalog.listFunctions(databaseId))
-		functions.map { f => Row(f.name) }
-	}
+  override def output = {
+    AttributeReference("database", StringType, nullable = false)() ::
+      AttributeReference("function", StringType, nullable = false)() :: Nil
+  }
+
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+
+    import mbSession.catalog._
+
+    val db = database.getOrElse(getCurrentDb)
+
+    val result = new ArrayBuffer[Row]()
+    // user defined
+    if (userFunc) {
+      mbSession.catalog.listFunctions(db, pattern.getOrElse("%")
+      ).foreach(f => result.append(Row(db, f.name)))
+    }
+
+    // built-in
+    if (builtInFunc) {
+      mbSession.engine.catalog
+        .listFunctions(db, Utils.escapeLikeRegex(pattern.getOrElse("%")))
+        .collect { case (f, "SYSTEM") => f.unquotedString }
+        .foreach(f => result.append(Row("built-in", f)))
+    }
+
+    result
+  }
 }
 
-case class ShowUsers(
-	pattern: Option[String]) extends MbRunnableCommand with DML {
-
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val users = pattern.map { p =>
-			mbSession.catalog.listUsers(ctx.organizationId, p)
-		}.getOrElse(mbSession.catalog.listUsers(ctx.organizationId))
-		users.map { u => Row(u.name) }
-	}
-}
-
-case class ShowGroups(
-	pattern: Option[String]) extends MbRunnableCommand with DML {
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val groups = pattern.map { p =>
-			mbSession.catalog.listGroups(ctx.organizationId, p)
-		}.getOrElse(mbSession.catalog.listGroups(ctx.organizationId))
-		groups.map { g => Row(g.name) }
-	}
-}
 
 case class ShowProcedures(
-	pattern: Option[String]) extends MbRunnableCommand with DML {
+                           pattern: Option[String]) extends MbRunnableCommand with DML {
 
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val procedures = pattern.map { p =>
-			mbSession.catalog.listProcedures(ctx.organizationId, p)
-		}.getOrElse(mbSession.catalog.listProcedures(ctx.organizationId))
-		procedures.map { a => Row(a.name) }
-	}
+  override def output = {
+    AttributeReference("PROCEDURE_NAME", StringType, nullable = false)() :: Nil
+  }
+
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+    mbSession.catalog.listProcedures(pattern).map { a => Row(a.name) }
+  }
 }
 
 case class ShowEvents(pattern: Option[String]) extends MbRunnableCommand with DML {
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val timedEvents = pattern.map { p =>
-			mbSession.catalog.listTimedEvents(ctx.organizationId, p)
-		}.getOrElse(mbSession.catalog.listTimedEvents(ctx.organizationId))
-		timedEvents.map { e => Row(e.name) }
-	}
+
+  override def output = {
+    AttributeReference("EVENT_NAME", StringType, nullable = false)() ::
+      AttributeReference("ENABLE", StringType, nullable = false)() :: Nil
+  }
+
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+
+    mbSession.catalog.listTimedEvents(pattern).map { e =>
+      Row(e.name, e.enable.toString)
+    }
+  }
 }
 
 case class ShowGrants(user: String) extends MbRunnableCommand with DML {
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession) = {
-		val catalogUser = mbSession.catalog.getUser(ctx.organizationId, user)
-		if (mbSession.catalog.isSa(ctx.userId) || user == ctx.userName) {
-			val buffer = new ArrayBuffer[Row]()
-			val databasePrivilege = mbSession.catalog.getDatabasePrivilege(catalogUser.id.get)
-			val tablePrivilege = mbSession.catalog.getTablePrivilege(catalogUser.id.get)
-			val columnPrivilege = mbSession.catalog.getColumnPrivilege(catalogUser.id.get)
-			buffer.append( databasePrivilege.map { p => Row("Database Privilege" , s"${ctx.databaseName} : ${p.privilegeType}")}:_*)
-			buffer.append( tablePrivilege.map { p => Row("Table Privilege" , s"${ctx.databaseName}.${p.table} : ${p.privilegeType}")}:_* )
-			buffer.append( columnPrivilege.map { p=> Row("Column Privilege" , s"${ctx.databaseName}.${p.table}.${p.column} : ${p.privilegeType}")}:_*)
-			buffer
-		} else {
-			throw new Exception(s"Access denied for user '$user'")
-		}
-	}
+
+  override def output = {
+    AttributeReference("PRIVILEGE_LEVEL", StringType)() ::
+      AttributeReference("NAME", StringType)() ::
+      AttributeReference("PRIVILEGE_TYPE", StringType)() ::
+      Nil
+  }
+
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+
+    // TODO
+    /*val catalogUser = mbSession.catalog.getUser(user)
+
+    if (catalogUser.isSA || mbSession.catalog.currentUser.equalsIgnoreCase(user)) {
+
+    }
+
+    if (mbSession.catalog.isSa(env.userId) || user == env.userName) {
+      val buffer = new ArrayBuffer[Row]()
+      val databasePrivilege = mbSession.catalog.getDatabasePrivilege(catalogUser.id.get)
+      val tablePrivilege = mbSession.catalog.getTablePrivilege(catalogUser.id.get)
+      val columnPrivilege = mbSession.catalog.getColumnPrivilege(catalogUser.id.get)
+      buffer.append(databasePrivilege.map { p =>
+        val database = mbSession.catalog.getDatabase(p.databaseId)
+        Row("Database", database.name, p.privilegeType)
+      }: _*)
+      buffer.append(tablePrivilege.map { p =>
+        val database = mbSession.catalog.getDatabase(p.databaseId)
+        Row("Table", s"${database.name}.${p.table}", p.privilegeType)
+      }: _*)
+      buffer.append(columnPrivilege.map { p =>
+        val database = mbSession.catalog.getDatabase(p.databaseId)
+        Row("Column", s"${database.name}.${p.table}.${p.column}", p.privilegeType)
+      }: _*)
+      buffer
+    } else {
+      throw new Exception(s"Access denied for user '$user'")
+    }*/
+    Seq.empty[Row]
+  }
+}
+
+case class ShowCreateTable(table: TableIdentifier) extends MbRunnableCommand with DML {
+
+  override def output: Seq[Attribute] = {
+    AttributeReference("Table", StringType, nullable = false)() ::
+      AttributeReference("Create Table", StringType, nullable = false)() :: Nil
+  }
+
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+
+    import mbSession.catalog._
+
+    val db = table.database.getOrElse(getCurrentDb)
+
+    val catalogTable = mbSession.catalog.getTable(db, table.table)
+
+    val createTable = if (catalogTable.tableType == CatalogTableType.TABLE) {
+      catalogTable.properties.filterKeys(!_.toLowerCase.contains("password")).map {
+        case (key, value) => s"$key '$value'"
+      }.mkString(", ")
+    } else {
+      catalogTable.viewText.get
+    }
+
+    Seq(Row(table.unquotedString, createTable))
+  }
+}
+
+case class ShowSchema(sql: String) extends MbRunnableCommand with DML {
+
+  override def output: Seq[Attribute] = {
+    AttributeReference("name", StringType, nullable = false)() ::
+      AttributeReference("dataType", StringType, nullable = false)() ::
+      AttributeReference("nullable", StringType, nullable = false)() ::
+      AttributeReference("metadata", StringType, nullable = false)() :: Nil
+  }
+
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+    mbSession.sqlSchema(sql).map { field =>
+      Row(field.name,
+        field.dataType.simpleString, field.nullable.toString, field.metadata.json)
+    }
+  }
 }
 
 case class DescDatabase(name: String) extends MbRunnableCommand with DML {
 
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val database = mbSession.catalog.getDatabase(ctx.organizationId, name)
-		val isLogical = database.isLogical
-		val properties = database.properties.filterNot { case (key, _) =>
-			key.toLowerCase.contains("user") ||
-					key.toLowerCase.contains("username") ||
-					key.toLowerCase.contains("password")
-		}.toSeq.mkString("(", ", ", ")")
-		val result = Row("Database Name", database.name) ::
-				Row("IsLogical", isLogical) ::
-				Row("Properties", properties) ::
-				Row("Description", database.description.getOrElse("")) :: Nil
-		result
-	}
+  override def output = {
+    AttributeReference("PROPERTY_NAME", StringType, nullable = false)() ::
+      AttributeReference("VALUE", StringType, nullable = false)() ::
+      Nil
+  }
+
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+
+    val database = mbSession.catalog.getDatabase(name)
+
+    val isLogical = database.isLogical
+    val properties = database.properties.filterKeys(!_.toLowerCase.contains("password")).map {
+      case (key, value) => s"$key '$value'"
+    }.mkString(", ")
+    val result = Row("database", database.name) ::
+      Row("islogical", isLogical.toString) ::
+      Row("properties", properties) ::
+      Row("description", database.description.getOrElse("-")) :: Nil
+    result
+  }
 }
 
-case class DescTable(table: MbTableIdentifier, extended: Boolean) extends MbRunnableCommand with DML {
+case class DescTable(table: TableIdentifier, extended: Boolean) extends MbRunnableCommand with DML {
 
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val result = new ArrayBuffer[Row]()
+  override def output: Seq[Attribute] = {
+    AttributeReference("name", StringType, nullable = false)() ::
+      AttributeReference("dataType", StringType, nullable = false)() ::
+      AttributeReference("nullable", StringType, nullable = false)() ::
+      AttributeReference("metadata", StringType, nullable = false)() :: Nil
+  }
 
-		val databaseId = table.database.map(db => mbSession.catalog.getDatabase(ctx.organizationId, db).id.get)
-			.getOrElse(ctx.databaseId)
-		val catalogTable = mbSession.catalog.getTable(databaseId, table.table)
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
 
-		result.append(Row("Table Name", catalogTable.name))
-		result.append(Row("Description", catalogTable.description.getOrElse("No Description.")))
-		//result.append(Row("IsStream", catalogTable.isStream))
+    import mbSession.catalog._
 
-		if (extended) {
-			val properties = if (catalogTable.properties.isEmpty) {
-				""
-			} else {
-				catalogTable.properties.filterNot { case (key, value) =>
-					key.toLowerCase.contains("user") ||
-						key.toLowerCase.contains("username") ||
-						key.toLowerCase.contains("password")
-				}.toSeq.mkString("(", ", ", ")")
-			}
-			result.append(Row("Properties", properties))
-		}
-		val privilegeManager = new TablePrivilegeManager(mbSession, catalogTable)
+    val db = table.database.getOrElse(getCurrentDb)
 
-		val insertPrivilege = privilegeManager.insertable()
-		val deletePrivilege = privilegeManager.deletable()
-		val truncatePrivilege = privilegeManager.truncatable()
+    val schema = mbSession.tableSchema(table.table, db)
 
-		val selectPrivileges = privilegeManager.selectable()
-		val updatePrivileges = privilegeManager.updatable()
-
-		result.append(Row("Insert", insertPrivilege))
-		result.append(Row("Delete", deletePrivilege))
-		result.append(Row("Truncate", truncatePrivilege))
-		result.append(Row("Select", selectPrivileges.map(col => (col.name, col.dataType)).mkString(", ")))
-		result.append(Row("Update", updatePrivileges.map(col => (col.name, col.dataType)).mkString(", ")))
-		result
-	}
+    schema.map { field =>
+      Row(field.name,
+        field.dataType.simpleString,
+        field.nullable.toString,
+        field.metadata.json)
+    }
+  }
 }
 
-case class DescView(view: MbTableIdentifier) extends MbRunnableCommand with DML {
+case class DescFunction(function: FunctionIdentifier, isExtended: Boolean)
+  extends MbRunnableCommand with DML {
 
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val databaseId = view.database.map(db => mbSession.catalog.getDatabase(ctx.organizationId, db).id.get)
-			.getOrElse(ctx.databaseId)
-		val catalogView = mbSession.catalog.getView(databaseId, view.table)
-		val result = Row("View Name", catalogView.name) ::
-			Row("Description", catalogView.description.getOrElse("")) ::
-			Row("SQL", catalogView.cmd) :: Nil
-		result
-	}
+  override def output = {
+    AttributeReference("PROPERTY_NAME", StringType, nullable = false)() ::
+      AttributeReference("VALUE", StringType, nullable = false)() ::
+      Nil
+  }
 
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+
+    import mbSession.catalog._
+
+    val db = function.database.getOrElse(getCurrentDb)
+
+    mbSession.catalog.getFunctionOption(db, function.funcName) match {
+      case Some(func) => // UDF
+        val result =
+          Row("Function", func.name) ::
+            Row("Class", func.className) ::
+            Row("Usage", func.description.getOrElse("-")) :: Nil
+        if (isExtended) {
+          result :+ Row("Extended Usage", "-")
+        } else {
+          result
+        }
+      case None =>
+        function.funcName.toLowerCase(Locale.ROOT) match {
+          case "<>" =>
+            Row("Function", function.unquotedString) ::
+              Row("Usage",
+                " expr1 <> expr2 - Returns true if `expr1` is not equal to `expr2`.") :: Nil
+          case "!=" =>
+            Row(s"Function", function.unquotedString) ::
+              Row("Usage",
+                "expr1 != expr2 - Returns true if `expr1` is not equal to `expr2`.") :: Nil
+          case "between" =>
+            Row("Function", "between") ::
+              Row("Usage",
+                "expr1 [NOT] BETWEEN expr2 AND expr3 - evaluate if `expr1` is [not] in between `expr2` and `expr3`.") :: Nil
+          case "case" =>
+            Row("Function", "case") ::
+              Row("Usage", "CASE expr1 WHEN expr2 THEN expr3 " +
+                "[WHEN expr4 THEN expr5]* [ELSE expr6] END - " +
+                "When `expr1` = `expr2`, returns `expr3`; " +
+                "when `expr1` = `expr4`, return `expr5`; else return `expr6`.") :: Nil
+          case _ =>
+            val info = mbSession.engine.catalog.lookupFunctionInfo(function)
+            val name = if (info.getDb != null) info.getDb + "." + info.getName else info.getName
+            val result =
+              Row(s"Function", name) ::
+                Row(s"Class", info.getClassName) ::
+                Row(s"Usage", replaceFunctionName(info.getUsage, info.getName)) :: Nil
+
+            if (isExtended) {
+              result :+
+                Row(s"Extended Usage", replaceFunctionName(info.getExtended, info.getName))
+            } else {
+              result
+            }
+
+        }
+    }
+  }
+
+  private def replaceFunctionName(usage: String, functionName: String): String = {
+    if (usage == null) {
+      "N/A."
+    } else {
+      usage.replaceAll("_FUNC_", functionName)
+    }
+  }
 }
 
-case class DescFunction(function: MbFunctionIdentifier, extended: Boolean)
-	extends MbRunnableCommand with DML {
 
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val result = new ArrayBuffer[Row]()
+case class DescProcedure(proc: String) extends MbRunnableCommand with DML {
 
-		val databaseId = function.database.map(db => mbSession.catalog.getDatabase(ctx.organizationId, db).id.get)
-			.getOrElse(ctx.databaseId)
-		val catalogFunction = mbSession.catalog.getFunction(databaseId, function.func)
-		result.append(
-			Row("Function Name", catalogFunction.name),
-			Row("Description", catalogFunction.description.getOrElse(""))
-		)
-		if (extended) {
-			// TODO
-			result.append( Row("Class", catalogFunction.className))
-		}
-		result
-	}
-}
+  override def output: Seq[Attribute] = {
+    AttributeReference("PROPERTY_NAME", StringType, nullable = false)() ::
+      AttributeReference("VALUE", StringType, nullable = false)() ::
+      Nil
+  }
 
-case class DescUser(user: String) extends MbRunnableCommand with DML {
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+    val procedure = mbSession.catalog.getProcedure(proc)
 
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val catalogUser: CatalogUser = mbSession.catalog.getUser(ctx.organizationId, user)
-		val result = Row("User Name", catalogUser.name) ::
-			Row("Account", catalogUser.account) ::
-			Row("DDL", catalogUser.ddl) ::
-			Row("DCL", catalogUser.dcl) ::
-			Row("Grant Account", catalogUser.grantAccount) ::
-			Row("Grant DDL", catalogUser.grantDdl) ::
-			Row("Grant DCL", catalogUser.grantDcl) ::
-			Row("IsSA", catalogUser.isSA) :: Nil
-		result
-	}
-}
+    Row("Procedure Name", procedure.name) ::
+      Row("Language", procedure.lang) ::
+      Row("SQL", procedure.sqls.mkString("; ")) :: Nil
 
-case class DescGroup(group: String) extends MbRunnableCommand with DML {
-
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val catalogGroup: CatalogGroup = mbSession.catalog.getGroup(ctx.organizationId, group)
-		val result = Row("Group Name", catalogGroup.name) ::
-			Row("Description", catalogGroup.description.getOrElse("")) :: Nil
-		result
-	}
+  }
 }
 
 case class DescEvent(event: String) extends MbRunnableCommand with DML {
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val catalogTimedEvent = mbSession.catalog.getTimedEvent(ctx.organizationId, event)
-		val catalogUser = mbSession.catalog.getUser(catalogTimedEvent.definer)
-		val proc = mbSession.catalog.getProcedure(catalogTimedEvent.procedure)
-		val result = Row("Event Name", catalogTimedEvent.name) ::
-			Row("Definer", catalogUser.name) ::
-			Row("Schedule", catalogTimedEvent.schedule) ::
-			Row("Enable", catalogTimedEvent.enable) ::
-			Row("Procedure", proc.cmds) ::
-			Row("Description", catalogTimedEvent.description.getOrElse("No Description.")) :: Nil
-		result
-	}
+
+  override def output = {
+    AttributeReference("PROPERTY_NAME", StringType, nullable = false)() ::
+      AttributeReference("VALUE", StringType, nullable = false)() ::
+      Nil
+  }
+
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+
+    val catalogEvent = mbSession.catalog.getTimedEvent(event)
+
+    Row("Event Name", catalogEvent.name) ::
+      Row("Definer", catalogEvent.definer) ::
+      Row("Schedule", catalogEvent.schedule) ::
+      Row("Enable", catalogEvent.enable.toString) ::
+      Row("Procedure", catalogEvent.procedure) ::
+      Row("Description", catalogEvent.description.getOrElse("-")) :: Nil
+
+  }
 }
 
-/*case class SetConfiguration(key: String, value: String) extends MbRunnableCommand with DML {
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = {
-		val user = mbSession.catalog.getUser(ctx.userId)
-		mbSession.catalog.alterUser(
-			user.copy(
-				configuration = user.configuration.+(key -> value),
-				updateBy = ctx.userId,
-				updateTime = Utils.now
-			)
-		)
-		Seq.empty[Row]
-	}
-}*/
+case class Explain(query: String, extended: Boolean = false) extends MbRunnableCommand with DML with MbLogging {
 
-case class Explain(query: String, extended: Boolean = false) extends MbRunnableCommand with DML {
-	// TODO
-	override def run(mbSession: MbSession)(implicit ctx: CatalogSession): Seq[Row] = try {
-		val logicalPlan = mbSession.pushdownPlan(mbSession.optimizedPlan(query))
-		val outputString = logicalPlan match {
-			case w@WholePushdown(child, _) =>
-				val executedPlan = mbSession.toDF(child).queryExecution.executedPlan
-				if (extended) {
-					w.simpleString + "\n+-" +
-					executedPlan.toString()
-				} else {
-					w.simpleString + "\n+-" +
-					executedPlan.simpleString
-				}
-			case _ =>
-				val executedPlan = mbSession.toDF(logicalPlan).queryExecution.executedPlan
-				if (extended) {
-					executedPlan.toString()
-				} else {
-					executedPlan.simpleString
-				}
-		}
-		Seq(Row(outputString))
-	} catch { case e: TreeNodeException[_] =>
-		("Error occurred during query planning: \n" + e.getMessage).split("\n").map(Row(_))
-	}
+  override def output = {
+    AttributeReference("EXPLAIN_RESULT", StringType, nullable = false)() :: Nil
+  }
+
+  // TODO
+  override def run(mbSession: MoonboxSession): Seq[Row] = {
+    import mbSession.engine._
+    val parsedPlan = parsePlan(query)
+    injectTableFunctions(parsedPlan)
+    val optimizedPlan = optimizePlan(analyzePlan(parsedPlan))
+    try {
+      val logicalPlan = pushdownPlan(optimizedPlan)
+      val outputString = logicalPlan match {
+        case w@WholePushdown(child, _) =>
+          val executedPlan = createDataFrame(child).queryExecution.executedPlan
+          if (extended) {
+            w.simpleString + "\n+-" +
+              executedPlan.toString()
+          } else {
+            w.simpleString + "\n+-" +
+              executedPlan.simpleString
+          }
+        case _ =>
+          val executedPlan = createDataFrame(logicalPlan).queryExecution.executedPlan
+          if (extended) {
+            executedPlan.toString()
+          } else {
+            executedPlan.simpleString
+          }
+      }
+      Seq(Row(outputString))
+    } catch {
+      case e: Exception if mbSession.engine.pushdownEnable =>
+        logError("Execute pushdown failed, Retry without pushdown optimize.", e)
+        val executedPlan = createDataFrame(optimizedPlan).queryExecution.executedPlan
+        val outputString = if (extended) {
+          executedPlan.toString()
+        } else {
+          executedPlan.simpleString
+        }
+        Seq(Row(outputString))
+
+      case e: TreeNodeException[_] =>
+        ("Error occurred during query planning: \n" + e.getMessage).split("\n").map(Row(_))
+    }
+  }
 }
 
 case class MQLQuery(query: String) extends MbCommand with DML
 
 case class CreateTempView(
-	name: String,
-	query: String,
-	isCache: Boolean,
-	replaceIfExists: Boolean) extends MbCommand with DML
+                           name: String,
+                           query: String,
+                           isCache: Boolean,
+                           replaceIfExists: Boolean) extends MbCommand with DML
 
 
 case class CreateTempFunction(
-	function: MbFunctionIdentifier,
-	className: String,
-	methodName: Option[String],
-	resources: Seq[FunctionResource],
-	ignoreIfExists: Boolean) extends MbCommand with DML
+                               function: FunctionIdentifier,
+                               className: String,
+                               methodName: Option[String],
+                               resources: Seq[FunctionResource],
+                               ignoreIfExists: Boolean) extends MbCommand with DML
 
 case class DropTempFunction(
-	function: MbFunctionIdentifier,
-	ignoreIfNotExists: Boolean) extends MbCommand with DML
+                             function: FunctionIdentifier,
+                             ignoreIfNotExists: Boolean) extends MbCommand with DML
 
 case class InsertInto(
-	table: MbTableIdentifier,
-	query: String,
-	overwrite: Boolean) extends MbCommand with DML
+                       table: TableIdentifier,
+                       query: String,
+                       partitionColumns: Seq[String],
+                       coalesce: Option[Int],
+                       insertMode: InsertMode.Value
+                     ) extends MbCommand with DML
+
+object InsertMode extends Enumeration {
+  val Append = Value
+  val Overwrite = Value
+  val Merge = Value
+}
+
+case class Statement(sql: String) extends MbCommand with DML
