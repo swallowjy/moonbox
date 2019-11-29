@@ -145,7 +145,7 @@ mql
     //| INSERT (INTO | OVERWRITE | UPDATE | MERGE ) TABLE? tableIdentifier partitionSpec? coalesceSpec? AS? query                 # insertInto
     | CREATE (OR REPLACE)? CACHE? (TEMP | TEMPORARY) VIEW name=identifier AS? query             # createTemporaryView
     //| query                                                                                     # mqlQuery
-    | statement=(SELECT | WITH | INSERT | SET | ANALYZE | REFRESH).*?                                                                             # statement
+    | statement=(SELECT | WITH | INSERT | SET | ANALYZE | REFRESH | SHOW).*?                                                                             # statement
     ;
 
 procCmds
