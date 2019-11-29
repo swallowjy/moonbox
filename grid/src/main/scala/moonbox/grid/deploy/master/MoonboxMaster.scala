@@ -496,7 +496,7 @@ class MoonboxMaster(
 					}
 				case None =>
 					val appType = if (centralized) "centralized" else "distributed"
-					val msg = s"There is no available application for $appType computation."
+					val msg = s"There is no available application for $appType $appLabel computation."
 					logWarning(msg)
 					sender() ! OpenSessionResponse(None, message = msg)
 			}
