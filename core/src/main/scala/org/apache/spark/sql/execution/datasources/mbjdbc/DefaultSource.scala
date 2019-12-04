@@ -25,6 +25,7 @@ import java.sql.Connection
 import moonbox.core.datasys.{DataSystem, Updatable}
 import org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils._
 import org.apache.spark.sql.execution.datasources.jdbc.{JDBCOptions, JdbcUtils}
+import org.apache.spark.sql.jdbc.{ClickHouseDialect, JdbcDialects}
 import org.apache.spark.sql.sources.{CreatableRelationProvider, RelationProvider, _}
 import org.apache.spark.sql.{SQLContext, SaveMode, _}
 
@@ -36,7 +37,9 @@ class DefaultSource extends CreatableRelationProvider
   private def addDriverIfNecessary(parameters: Map[String, String]): Map[String, String] = {
     val newParameters = if (parameters.get("type").isDefined && parameters.get("driver").isEmpty) {
       val driver = parameters("type").toLowerCase match {
-        case "clickhouse" => Some("ru.yandex.clickhouse.ClickHouseDriver")
+        case "clickhouse" =>
+          JdbcDialects.registerDialect(ClickHouseDialect)
+          Some("ru.yandex.clickhouse.ClickHouseDriver")
         case "mysql" => Some("com.mysql.jdbc.Driver")
         case "oracle" => Some("oracle.jdbc.driver.OracleDriver")
         case "sqlserver" => Some("com.microsoft.sqlserver.jdbc.SQLServerDriver")
