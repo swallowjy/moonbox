@@ -108,6 +108,7 @@ class DefaultSource extends CreatableRelationProvider
       }
     }
     val parts = MbJDBCRelation.columnPartition(partitionInfo)
+
     MbJDBCRelation(parts, jdbcOptions)(sqlContext.sparkSession)
   }
 
