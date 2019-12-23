@@ -24,14 +24,32 @@ import java.sql.{Connection, DriverManager}
 import java.util.Properties
 
 import moonbox.common.MbLogging
-import moonbox.core.datasys.DataSystem
+import moonbox.core.datasys.{DataSystem, DataTable, Pushdownable}
+import org.apache.spark.sql.catalyst.plans.JoinType
+import org.apache.spark.sql.catalyst.plans.logical._
+import org.apache.spark.sql.{DataFrame, SparkSession}
 
 import scala.collection.mutable.ArrayBuffer
 
 class ImpalaDataSystem(props: Map[String, String])
-  extends DataSystem(props) with MbLogging {
+  extends DataSystem(props) with Pushdownable with MbLogging {
 
   checkOptions("type", "url")
+
+  override val supportedOperators: Seq[Class[_]] = Seq(classOf[Project],
+    classOf[Filter],
+    classOf[Aggregate],
+    classOf[Sort],
+    classOf[Join],
+    classOf[GlobalLimit],
+    classOf[LocalLimit],
+    classOf[Subquery],
+    classOf[SubqueryAlias])
+
+  override val supportedJoinTypes: Seq[JoinType] = _
+  override val supportedExpressions: Seq[Class[_]] = _
+  override val beGoodAtOperators: Seq[Class[_]] = _
+  override val supportedUDF: Seq[String] = _
 
   override def tableNames(): Seq[String] = {
     val tables = new ArrayBuffer[String]()
@@ -52,6 +70,13 @@ class ImpalaDataSystem(props: Map[String, String])
     props.+("dbtable" -> tableName)
   }
 
+  override def isSupportAll: Boolean = ???
+
+  override def fastEquals(other: DataSystem): Boolean = ???
+
+  override def buildScan(plan: LogicalPlan, sparkSession: SparkSession): DataFrame = ???
+
+  override def buildQuery(plan: LogicalPlan, sparkSession: SparkSession): DataTable = ???
 
   private def getConnection: () => Connection = {
     val p = new Properties()
@@ -78,4 +103,5 @@ class ImpalaDataSystem(props: Map[String, String])
       }
     }
   }
+
 }
