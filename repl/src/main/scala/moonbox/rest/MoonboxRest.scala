@@ -151,12 +151,23 @@ object MoonboxRest {
   private def splitSql(sql: String, splitter: Char): Seq[String] = {
     val stack = new mutable.Stack[Char]()
     val splitIndex = new ArrayBuffer[Int]()
+    var doubleQuoteCount = 0
+    var singleQuoteCount = 0
+    var parenthesisCount = 0
     for ((char, idx) <- sql.toCharArray.zipWithIndex) {
       if (char == splitter) {
-        if (stack.isEmpty) splitIndex += idx
+        if (parenthesisCount == 0 && doubleQuoteCount % 2 == 0 && singleQuoteCount % 2 == 0) splitIndex += idx
       }
-      if (char == '(') stack.push('(')
-      if (char == ')') stack.pop()
+      if (char == ''') singleQuoteCount += 1
+      if (char == '"') doubleQuoteCount += 1
+      if (char == '(') {
+        if (singleQuoteCount % 2 == 0 && doubleQuoteCount % 2 == 0)
+          parenthesisCount += 1
+      }
+      if (char == ')') {
+        if (singleQuoteCount % 2 == 0 && doubleQuoteCount % 2 == 0)
+          parenthesisCount -= 1
+      }
     }
     splits(sql, splitIndex.toArray, 0).map(_.stripPrefix(splitter.toString).trim).filter(_.length > 0)
   }
