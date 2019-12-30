@@ -81,7 +81,7 @@ object MoonboxRest {
     val jsonObject = new JSONObject()
       .put("username", user)
       .put("password", password)
-      .put("sql", readSqls().asJava)
+      .put("sqls", readSqls().asJava)
       .put("lang", language)
       .put("config", config.toMap.asJava)
 
