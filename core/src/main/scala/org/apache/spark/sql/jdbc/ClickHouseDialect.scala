@@ -24,7 +24,9 @@ import java.sql.Types
 import org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils
 import org.apache.spark.sql.types._
 
-case object ClickHouseDialect extends JdbcDialect {
+class ClickHouseDialect extends JdbcDialect {
+
+  println("clickhouse dialect")
 
   override def canHandle(url: String): Boolean = url.startsWith("jdbc:clickhouse")
 

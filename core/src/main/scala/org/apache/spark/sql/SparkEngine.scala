@@ -43,7 +43,7 @@ import org.apache.spark.sql.execution.datasources._
 import org.apache.spark.sql.hive._
 import org.apache.spark.sql.hive.execution.InsertIntoHiveTable
 import org.apache.spark.sql.internal.{SQLConf, StaticSQLConf}
-import org.apache.spark.sql.optimizer.{MbOptimizer, WholePushdown}
+import org.apache.spark.sql.optimizer.{MbOptimizer, MbPruneFilters, WholePushdown}
 import org.apache.spark.sql.rewrite.CTESubstitution
 import org.apache.spark.sql.types.{IntegerType, StructType}
 import org.apache.spark.{SparkConf, SparkContext}
@@ -77,6 +77,7 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
     builder.config(StaticSQLConf.WAREHOUSE_PATH.key,
       "file://" + Utils.getMoonboxHomeOption.getOrElse("/tmp") + File.separator +
         "spark-warehouse" + File.separator + mbCatalog.getCurrentOrg)
+    injectOptimizerRule(builder)
     injectResolutionRule(builder)
     injectPostHocResolutionRule(builder)
     injectCheckRule(builder)
@@ -135,6 +136,17 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
   private def injectPlannerStrategy(builder: SparkSession.Builder): Unit = {
     hivePlannerStrategy.foreach { strategy =>
       builder.withExtensions(_.injectPlannerStrategy(strategy))
+    }
+  }
+
+  /**
+    * inject optimizer rules
+    *
+    * @param builder SparkSession.Builder
+    */
+  private def injectOptimizerRule(builder: SparkSession.Builder): Unit = {
+    optimizerRule.foreach { rule =>
+      builder.withExtensions(_.injectOptimizerRule(rule))
     }
   }
 
@@ -818,6 +830,10 @@ object SparkEngine extends MbLogging {
     }
     conf
   }
+
+  private val optimizerRule = Seq[RuleBuilder](
+    (session: SparkSession) => MbPruneFilters(session)
+  )
 
   private val hiveCheckRule = Seq[CheckRuleBuilder](
     (session: SparkSession) => PreWriteCheck

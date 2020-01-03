@@ -21,25 +21,27 @@
 package org.apache.spark.sql.execution.datasources.mbjdbc
 
 import java.sql.Connection
+import java.util.ServiceLoader
 
 import moonbox.core.datasys.{DataSystem, Updatable}
 import org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils._
 import org.apache.spark.sql.execution.datasources.jdbc.{JDBCOptions, JdbcUtils}
-import org.apache.spark.sql.jdbc.{ClickHouseDialect, JdbcDialects}
+import org.apache.spark.sql.jdbc.{JdbcDialect, JdbcDialects}
 import org.apache.spark.sql.sources.{CreatableRelationProvider, RelationProvider, _}
 import org.apache.spark.sql.{SQLContext, SaveMode, _}
-
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 class DefaultSource extends CreatableRelationProvider
   with RelationProvider {
+
+  import DefaultSource._
+
   //TODO: in yarn cluster, if not driver name, app throws no suitable driver exception. It should config driver or code add automatically
   private def addDriverIfNecessary(parameters: Map[String, String]): Map[String, String] = {
     val newParameters = if (parameters.get("type").isDefined && parameters.get("driver").isEmpty) {
       val driver = parameters("type").toLowerCase match {
-        case "clickhouse" =>
-          JdbcDialects.registerDialect(ClickHouseDialect)
-          Some("ru.yandex.clickhouse.ClickHouseDriver")
+        case "clickhouse" => Some("ru.yandex.clickhouse.ClickHouseDriver")
         case "mysql" => Some("com.mysql.jdbc.Driver")
         case "oracle" => Some("oracle.jdbc.driver.OracleDriver")
         case "sqlserver" => Some("com.microsoft.sqlserver.jdbc.SQLServerDriver")
@@ -91,7 +93,7 @@ class DefaultSource extends CreatableRelationProvider
     val lowerBound = jdbcOptions.lowerBound
     val upperBound = jdbcOptions.upperBound
     val numPartitions = jdbcOptions.numPartitions
-    val autoCalculateBound = newParameters.get(MBJDBCOptions.AUTO_COMPUTE_PARTITION_BOUND).map(_.toBoolean)
+    val autoCalculateBound = newParameters.get(AUTO_COMPUTE_PARTITION_BOUND).map(_.toBoolean)
 
     val partitionInfo = if (partitionColumn.isEmpty) {
       assert(lowerBound.isEmpty && upperBound.isEmpty)
@@ -191,7 +193,7 @@ class DefaultSource extends CreatableRelationProvider
       map.put(JDBCOptions.JDBC_URL, url)
     }
     if (props.contains(JDBCOptions.JDBC_PARTITION_COLUMN) &&
-      props.contains(MBJDBCOptions.AUTO_COMPUTE_PARTITION_BOUND) && props(MBJDBCOptions.AUTO_COMPUTE_PARTITION_BOUND).toBoolean) {
+      props.contains(AUTO_COMPUTE_PARTITION_BOUND) && props(AUTO_COMPUTE_PARTITION_BOUND).toBoolean) {
       map.put(JDBCOptions.JDBC_LOWER_BOUND, "-1")
       map.put(JDBCOptions.JDBC_UPPER_BOUND, "-1")
     }
@@ -199,6 +201,11 @@ class DefaultSource extends CreatableRelationProvider
   }
 }
 
-object MBJDBCOptions {
+object DefaultSource {
+
   val AUTO_COMPUTE_PARTITION_BOUND = "autoComputePartitionBound"
+
+  for (x <- ServiceLoader.load(classOf[JdbcDialect]).asScala) {
+    JdbcDialects.registerDialect(x)
+  }
 }

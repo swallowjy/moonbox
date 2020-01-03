@@ -61,6 +61,13 @@
 
     </modules>
 
+    <distributionManagement>
+        <repository>
+            <id>nexus-snapshots</id>
+            <url>http://nexus.creditease.corp/nexus/content/repositories/snapshots/</url>
+        </repository>
+    </distributionManagement>
+
     <properties>
         <main.basedir>${project.basedir}</main.basedir>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
