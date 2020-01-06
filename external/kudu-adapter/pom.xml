@@ -28,6 +28,7 @@
             <groupId>org.apache.kudu</groupId>
             <artifactId>kudu-spark2_2.11</artifactId>
             <version>${kudu.version}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.kudu</groupId>

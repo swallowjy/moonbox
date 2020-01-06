@@ -49,6 +49,7 @@ class MbMySQLDialect extends MbDialect {
     dataType match {
       case _: StringType => "char"
       case _: IntegerType | LongType => "signed"
+      case _: FloatType | DoubleType => "decimal(38,18)"
       case _@DecimalType.Fixed(p, s) => s"decimal($p, $s)"
       case _: TimestampType => "datetime"
       case other@_ => other.sql

@@ -51,7 +51,6 @@ class MbOracleDialect extends MbDialect {
       case _: DoubleType => "float"
       case _: StringType => "char"
       case other@_ => other.sql
-
     }
   }
 
