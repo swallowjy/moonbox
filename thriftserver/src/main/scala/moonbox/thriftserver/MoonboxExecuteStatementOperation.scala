@@ -20,46 +20,36 @@
 
 package moonbox.thriftserver
 
+import java.sql.{Connection, JDBCType, ResultSet, Statement}
 import java.util.{Locale, Map => JMap}
 
-import moonbox.client.MoonboxClient
-import moonbox.client.entity.{MoonboxRow, MoonboxRowSet}
-import moonbox.client.exception.BackendException
 import moonbox.common.MbLogging
-import moonbox.protocol.DataType
 import org.apache.hadoop.hive.metastore.api.FieldSchema
 import org.apache.hive.service.cli._
 import org.apache.hive.service.cli.operation.ExecuteStatementOperation
 import org.apache.hive.service.cli.session.HiveSession
+import org.apache.hive.service.cli.thrift.TProtocolVersion
 
-import scala.collection.JavaConverters._
+import scala.collection.JavaConversions._
+import scala.collection.mutable.ArrayBuffer
 
-class MoonboxExecuteStatementOperation(var client: MoonboxClient,
+class MoonboxExecuteStatementOperation(var connection: Connection,
                                        parentSession: HiveSession,
                                        statement: String,
                                        confOverlay: JMap[String, String],
                                        runInBackground: Boolean = false)
   extends ExecuteStatementOperation(parentSession, statement, confOverlay, runInBackground) with MbLogging {
 
-  private var moonboxRowSet: MoonboxRowSet = _
+  private var moonboxResultSet: ResultSet = _
   private var database: String = _
+  private var jdbcStatement: Statement = _
   private val ignoreHiveSqls = Seq()
   private val ignorePrefixes = Seq(
     "SET"
   )
 
-  private lazy val resultSchema: TableSchema = {
-    if (moonboxRowSet == null || moonboxRowSet.isEmptySchema) {
-      new TableSchema(Seq(new FieldSchema("Result", "string", "")).asJava)
-    } else {
-      val fieldSchemas = (0 until moonboxRowSet.columnCount).map { index =>
-        val name = moonboxRowSet.columnName(index)
-        val hiveType = MoonboxExecuteStatementOperation.toHiveType(moonboxRowSet.columnDataType(index))
-        new FieldSchema(name, hiveType, "")
-      }
-      new TableSchema(fieldSchemas.asJava)
-    }
-  }
+  private var resultSchema: TableSchema = _
+  private val protocolVersion: TProtocolVersion = getProtocolVersion
 
   override def close(): Unit = {
     logDebug(s"Closing statement operation: statement=[$statement]")
@@ -69,11 +59,14 @@ class MoonboxExecuteStatementOperation(var client: MoonboxClient,
   override def getNextRowSet(order: FetchOrientation, maxRowsL: Long): RowSet = {
     validateDefaultFetchOrientation(order)
     assertState(OperationState.FINISHED)
-    val resultRowSet: RowSet = RowSetFactory.create(getResultSetSchema, getProtocolVersion)
+    val columns = moonboxResultSet.getMetaData.getColumnCount
+    val resultRowSet: RowSet = RowSetFactory.create(resultSchema, protocolVersion)
     var count: Long = 0
-    while (count < maxRowsL && moonboxRowSet != null && moonboxRowSet.hasNext) {
-      val row = moonboxRowSet.next()
-      resultRowSet.addRow(row.toArray.asInstanceOf[Array[AnyRef]])
+    while (count < maxRowsL && moonboxResultSet != null && moonboxResultSet.next()) {
+      val row = new ArrayBuffer[Object]
+      for (index <- 1 to columns)
+        row.append(moonboxResultSet.getObject(index))
+      resultRowSet.addRow(row.toArray)
       count += 1
     }
     resultRowSet
@@ -137,7 +130,8 @@ class MoonboxExecuteStatementOperation(var client: MoonboxClient,
         handleShowStatement(mbStatement, isDatabases = false)
       } else {
         /* handle query sql */
-        moonboxRowSet = doMoonboxQuery(statement)
+        moonboxResultSet = doMoonboxQuery(statement)
+        resultSchema = convert2HiveSchema(moonboxResultSet)
       }
     } else {
       /* Ignore unsupported commands. */
@@ -172,17 +166,17 @@ class MoonboxExecuteStatementOperation(var client: MoonboxClient,
           |  ]
           |}
         """.stripMargin
-      val array = new Array[Any](3)
-      val iter = result.map { row =>
-        array(0) = database
-        array(1) = row.getString(0)
-        array(2) = false
-        new MoonboxRow(array)
-      }
-      moonboxRowSet = new MoonboxRowSet(iter.asJava, schema)
+
+      val tableSchema = new TableSchema()
+      tableSchema.addStringColumn("database", "database name")
+      tableSchema.addStringColumn("tableName", "table name")
+      tableSchema.addPrimitiveColumn("isTemporary", Type.BOOLEAN_TYPE, "temporary")
+
+      resultSchema = tableSchema
     } else {
-      moonboxRowSet = result
+      resultSchema = convert2HiveSchema(result)
     }
+    moonboxResultSet = result
   }
 
   private def handleDescStatement(mbStatement: String): Unit = {
@@ -210,35 +204,49 @@ class MoonboxExecuteStatementOperation(var client: MoonboxClient,
         |  ]
         |}
       """.stripMargin
-    val iter = result.map { row =>
-      val arr = new Array[Any](3)
-      arr(0) = row.getString(0)
-      arr(1) = row.getString(1)
-      arr(2) = ""
-      new MoonboxRow(arr)
-    }
-    moonboxRowSet = new MoonboxRowSet(iter.asJava, schema)
+    val tableSchema = new TableSchema()
+    tableSchema.addStringColumn("col_name", "column name")
+    tableSchema.addStringColumn("data_type", "datatype")
+    tableSchema.addStringColumn("comment", "comment")
+
+    resultSchema = tableSchema
+    moonboxResultSet = result
   }
 
+
   /* do moonbox query */
-  private def doMoonboxQuery(mbStatement: String = statement): MoonboxRowSet = {
+  private def doMoonboxQuery(mbStatement: String = statement): ResultSet = {
     try {
-      client.interactiveQuery(mbStatement :: Nil)
+      jdbcStatement = connection.createStatement()
+      jdbcStatement.executeQuery(mbStatement)
     } catch {
-      case e: BackendException =>
-        if (e.getMessage.contains("login first")) {
-          client = client.newClient
-          client.interactiveQuery(mbStatement :: Nil)
-        } else throw new HiveSQLException(e)
+      case e: Exception =>
+        throw new HiveSQLException(e)
+    }
+  }
+
+  private def convert2HiveSchema(moonboxResultSet: ResultSet): TableSchema = {
+    val metaData = moonboxResultSet.getMetaData
+    if (moonboxResultSet == null || metaData.getColumnCount == 0) {
+      new TableSchema(Seq(new FieldSchema("Result", "string", "")))
+    } else {
+      val fieldSchemas = (1 to metaData.getColumnCount).map {
+        index =>
+          val name = metaData.getColumnName(index)
+          val hiveType = MoonboxExecuteStatementOperation.toHiveType(JDBCType.valueOf(metaData.getColumnType(index)))
+          new FieldSchema(name, hiveType, "")
+      }
+      new TableSchema(fieldSchemas)
     }
   }
 
   override def cancel(): Unit = {
-    logInfo(s"Canceling query, SessionId=${client.sessionId}, Token=${client.token}")
-    if (client.cancelInteractiveQuery()) {
+    try {
+      jdbcStatement.cancel()
       logInfo("Cancel query successfully.")
-    } else {
-      logInfo("Cancel query failed.")
+    } catch {
+      case ex: Exception =>
+        logError("Cancel query failed", ex)
     }
     cleanup(OperationState.CANCELED)
   }
@@ -255,16 +263,14 @@ class MoonboxExecuteStatementOperation(var client: MoonboxClient,
 }
 
 object MoonboxExecuteStatementOperation {
-  def toHiveType(dataType: DataType): String = {
-    import DataType._
+  def toHiveType(dataType: JDBCType): String = {
     dataType match {
-      case BYTE => "tinyint"
-      case SHORT => "smallint"
-      case INTEGER => "int"
-      case LONG => "bigint"
-      case NULL => "void"
-      case DECIMAL => "decimal(38,18)"
-      case ARRAY | BINARY | BOOLEAN | DATE | CHAR | VARCHAR | DOUBLE | FLOAT | STRING | TIMESTAMP | STRUCT | MAP | OBJECT | _ => dataType.getName
+      case JDBCType.NULL => "void"
+      case JDBCType.INTEGER => "int"
+      case JDBCType.JAVA_OBJECT => "map"
+      case JDBCType.DECIMAL => "decimal(38,18)"
+      case JDBCType.VARCHAR | JDBCType.CHAR => "string"
+      case _ => dataType.getName.toLowerCase(Locale.ROOT)
     }
   }
 }

@@ -64,9 +64,7 @@ import javax.ws.rs.core.NewCookie;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.security.PrivilegedExceptionAction;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -123,7 +121,6 @@ public class ThriftHttpServlet extends TServlet {
         String clientUserName = null;
         String clientIpAddress;
         boolean requireNewCookie = false;
-
         try {
             // If the cookie based authentication is already enabled, parse the
             // request and validate the request cookies.
@@ -158,24 +155,7 @@ public class ThriftHttpServlet extends TServlet {
                 SessionManager.setProxyUserName(doAsQueryParam);
             }
 
-            String org = request.getHeader("org");
-            SessionManager.setOrg(org);
-            LOG.debug("client org: " + org);
-
-            String maxRows = request.getHeader("maxrows");
-            if (maxRows != null) {
-                SessionManager.setMaxRows(Integer.valueOf(maxRows));
-            }
-
-            String isLocal = request.getHeader("islocal");
-            if (isLocal != null) {
-                SessionManager.setIsLocal(Boolean.valueOf(isLocal));
-            }
-
-            String fetchSize = request.getHeader("fetchsize");
-            if (fetchSize != null) {
-                SessionManager.setFetchSize(Integer.valueOf(fetchSize));
-            }
+            extractHttpHeader(request);
 
             clientIpAddress = request.getRemoteAddr();
             LOG.debug("Client IP Address: " + clientIpAddress);
@@ -215,6 +195,7 @@ public class ThriftHttpServlet extends TServlet {
             SessionManager.clearMaxRows();
             SessionManager.clearIsLocal();
             SessionManager.clearFetchSize();
+            SessionManager.clearQueryTimeout();
         }
     }
 
@@ -576,6 +557,43 @@ public class ThriftHttpServlet extends TServlet {
             }
         }
         return null;
+    }
+
+    private void extractHttpHeader(HttpServletRequest request) {
+//        Enumeration<String> headerNames = request.getHeaderNames();
+//        HashMap<String, String> headerMap = new HashMap<>();
+//        while (headerNames.hasMoreElements()) {
+//            String key = headerNames.nextElement();
+//            String value = request.getHeader(key);
+//            LOG.info("http header key=" + key + ", value=" + value);
+//            headerMap.put(key, value);
+//        }
+//        SessionManager.setParameterMap(headerMap);
+
+        String org = request.getHeader("org");
+        SessionManager.setOrg(org);
+        LOG.debug("client org: " + org);
+
+        String maxRows = request.getHeader("maxrows");
+        if (maxRows != null) {
+            SessionManager.setMaxRows(Integer.valueOf(maxRows));
+        }
+
+        String isLocal = request.getHeader("islocal");
+        if (isLocal != null) {
+            SessionManager.setIsLocal(Boolean.valueOf(isLocal));
+        }
+
+        String fetchSize = request.getHeader("fetchsize");
+        if (fetchSize != null) {
+            SessionManager.setFetchSize(Integer.valueOf(fetchSize));
+        }
+
+        String queryTimeout = request.getHeader("query_timeout");
+        if (queryTimeout != null) {
+            SessionManager.setQueryTimeout(Integer.valueOf(queryTimeout));
+        }
+
     }
 
 }

@@ -29,10 +29,9 @@ import com.typesafe.config.ConfigFactory
 import moonbox.common.{MbConf, MbLogging}
 import moonbox.grid.config.WORKER_TIMEOUT
 import moonbox.grid.deploy.DeployMessages.{LaunchDriver, _}
-import moonbox.grid.deploy._
 import moonbox.grid.deploy.app._
-import moonbox.grid.deploy.master.MoonboxMaster._
 import moonbox.grid.deploy.master.MoonboxMaster
+import moonbox.grid.deploy.master.MoonboxMaster._
 import moonbox.grid.{LogMessage, MbActor}
 
 import scala.collection.JavaConverters._
@@ -160,12 +159,14 @@ class MoonboxWorker(
 
     sendToMaster(driverStateChanged)
 
-    if (state == DriverState.FINISHED) {
+    if (state == DriverState.FINISHED || state == DriverState.FAILED || state == DriverState.LOST) {
       if (killMarker.contains(driverId)) {
         killMarker.remove(driverId)
       } else {
         driverIdToDriverDesc.get(driverId).foreach { desc =>
           if (desc.isInstanceOf[LongRunDriverDesc]) {
+            // Fix sparkContext is stopped, but driver is still running problem
+            finishedDrivers(driverId).kill()
             system.scheduler.scheduleOnce(new FiniteDuration(3, SECONDS)) {
               logInfo(s"Relaunch driver $driverId")
               self ! LaunchDriver(driverId, desc)

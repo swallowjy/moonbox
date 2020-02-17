@@ -423,15 +423,15 @@ case class Explain(query: String, extended: Boolean = false) extends MbRunnableC
 
   // TODO
   override def run(mbSession: MoonboxSession): Seq[Row] = {
-    import mbSession.engine._
-    val parsedPlan = parsePlan(query)
-    injectTableFunctions(parsedPlan)
-    val optimizedPlan = optimizePlan(analyzePlan(parsedPlan))
+    //    import mbSession.engine._
+    val parsedPlan = mbSession.engine.parsePlan(query)
+    mbSession.engine.injectTableFunctions(parsedPlan)
+    val optimizedPlan = mbSession.engine.optimizePlan(mbSession.engine.analyzePlan(parsedPlan))
     try {
-      val logicalPlan = pushdownPlan(optimizedPlan)
+      val logicalPlan = mbSession.engine.pushdownPlan(optimizedPlan)
       val outputString = logicalPlan match {
         case w@WholePushdown(child, _) =>
-          val executedPlan = createDataFrame(child).queryExecution.executedPlan
+          val executedPlan = mbSession.engine.createDataFrame(child).queryExecution.executedPlan
           if (extended) {
             w.simpleString + "\n+-" +
               executedPlan.toString()
@@ -440,7 +440,7 @@ case class Explain(query: String, extended: Boolean = false) extends MbRunnableC
               executedPlan.simpleString
           }
         case _ =>
-          val executedPlan = createDataFrame(logicalPlan).queryExecution.executedPlan
+          val executedPlan = mbSession.engine.createDataFrame(logicalPlan).queryExecution.executedPlan
           if (extended) {
             executedPlan.toString()
           } else {
@@ -451,7 +451,7 @@ case class Explain(query: String, extended: Boolean = false) extends MbRunnableC
     } catch {
       case e: Exception if mbSession.engine.pushdownEnable =>
         logError("Execute pushdown failed, Retry without pushdown optimize.", e)
-        val executedPlan = createDataFrame(optimizedPlan).queryExecution.executedPlan
+        val executedPlan = mbSession.engine.createDataFrame(optimizedPlan).queryExecution.executedPlan
         val outputString = if (extended) {
           executedPlan.toString()
         } else {

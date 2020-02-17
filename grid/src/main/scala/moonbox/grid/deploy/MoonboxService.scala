@@ -262,12 +262,12 @@ private[deploy] class MoonboxService(
   }
 
   def verify(username: String, password: String, sqls: Seq[String], database: Option[String])(implicit connection: ConnectionInfo): VerifyOutbound = {
-    auditLogger.log(username, "verify", Map("sqls" -> sqls.mkString(";")))
+    auditLogger.log(username, "verify", Map("sqls" -> sqls.mkString("; ")))
     parseUsername(username) match {
       case Some((org, user)) =>
         loginManager.login(org, user, password, forget = true) match {
           case Some(_) =>
-            askSync[VerifyResponse](VerifyRequest(org, user, sqls, database))(SHORT_TIMEOUT) match {
+            askSync[VerifyResponse](VerifyRequest(org, user, sqls, database))(LONG_TIMEOUT) match {
               case Left(VerifyResponse(success, message, result)) =>
                 VerifyOutbound(success, message, result.map(_.map { case (s, m) => VerifyResult(s, m) }))
               case Right(message) =>
@@ -307,7 +307,7 @@ private[deploy] class MoonboxService(
       case Some((org, user)) =>
         loginManager.login(org, user, password, forget = true) match {
           case Some(_) =>
-            askSync[TableResourcesResponses](TableResourcesRequest(org, user, sqls, database))(SHORT_TIMEOUT) match {
+            askSync[TableResourcesResponses](TableResourcesRequest(org, user, sqls, database))(LONG_TIMEOUT) match {
               case Left(TableResourcesResponses(success, sysmgs, result)) =>
                 if (success) {
                   val res = result.map { r =>
@@ -334,17 +334,26 @@ private[deploy] class MoonboxService(
 
   }
 
-  def schema(username: String, password: String, sql: String, database: Option[String])(implicit connection: ConnectionInfo): SchemaOutbound = {
-    auditLogger.log(username, "schema", Map("sql" -> sql))
+  def schema(username: String, password: String, sqls: Seq[String], database: Option[String], analyzable: Option[Boolean])(implicit connection: ConnectionInfo): SchemaOutbound = {
+    auditLogger.log(username, "schema", Map("sql" -> sqls.mkString("; ")))
     parseUsername(username) match {
       case Some((org, user)) =>
         loginManager.login(org, user, password, forget = true) match {
           case Some(_) =>
-            askSync[SchemaResponse](SchemaRequest(org, user, sql, database))(SHORT_TIMEOUT) match {
-              case Left(SchemaSuccessed(schema)) =>
-                SchemaOutbound(success = true, schema = Some(schema))
-              case Left(SchemaFailed(message)) =>
-                SchemaOutbound(success = false, message = Some(message))
+            askSync[SchemaResponses](SchemaRequest(org, user, sqls, database, analyzable))(LONG_TIMEOUT) match {
+              case Left(SchemaResponses(success, message, result)) =>
+                if (success) {
+                  val res = result.map(r =>
+                    r.map {
+                      case SchemaSuccessed(schemaType, fields) =>
+                        SchemaResult(success = true, `type` = Some(schemaType), fields = Some(fields))
+                      case SchemaFailed(message) =>
+                        SchemaResult(success = false, message = Some(message))
+                    })
+                  SchemaOutbound(success = true, result = res)
+                } else {
+                  SchemaOutbound(success = false, message = message)
+                }
               case Right(message) =>
                 SchemaOutbound(success = false, message = Some(message))
             }
@@ -363,7 +372,7 @@ private[deploy] class MoonboxService(
       case Some((org, user)) =>
         loginManager.login(org, user, password, forget = true) match {
           case Some(_) =>
-            askSync[LineageResponse](LineageRequest(org, user, sqls, database))(SHORT_TIMEOUT) match {
+            askSync[LineageResponse](LineageRequest(org, user, sqls, database))(LONG_TIMEOUT) match {
               case Left(LineageSuccessed(dags)) =>
                 LineageOutbound(success = true, dags = Some(dags))
               case Left(LineageFailed(message)) =>

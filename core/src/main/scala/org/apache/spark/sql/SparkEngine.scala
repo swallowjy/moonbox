@@ -45,7 +45,7 @@ import org.apache.spark.sql.hive.execution.InsertIntoHiveTable
 import org.apache.spark.sql.internal.{SQLConf, StaticSQLConf}
 import org.apache.spark.sql.optimizer.{MbOptimizer, MbPruneFilters, WholePushdown}
 import org.apache.spark.sql.rewrite.CTESubstitution
-import org.apache.spark.sql.types.{IntegerType, StructType}
+import org.apache.spark.sql.types.{IntegerType, NullType, StructField, StructType}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.spark_project.guava.util.concurrent.Striped
 
@@ -280,6 +280,10 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
     val parsedPlan = parsePlan(sql)
     injectTableFunctions(parsedPlan)
     analyzePlan(parsedPlan).schema
+  }
+
+  def unresolvedSqlSchema(sql: String): StructType = {
+    StructType(parsePlan(sql).output.map(attribute => StructField(name = attribute.name, dataType = NullType)))
   }
 
   private def alterLogicalPlanPartition(logicalPlan: LogicalPlan, props: Map[String, String]): LogicalPlan = {
@@ -684,7 +688,7 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
     * @param props connection or other parameters
     */
   private def registerDatasourceTable(table: TableIdentifier, props: Map[String, String]): Unit = {
-    setRemoteHadoopConf(mergeRemoteHadoopConf(props))
+    setRemoteHadoopConf(mergeRemoteHadoopConf(props.filterKeys(k => !k.trim.toLowerCase.startsWith("spark.hadoop"))))
     val schema = props.get("schema").map(s => s"($s)").getOrElse("")
     val options = props.map { case (k, v) => s"'$k' '$v'" }.mkString(",")
 
@@ -722,7 +726,7 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
       )
     } else {
       val path = hiveCatalogTable.storage.locationUri.get.toString
-      setRemoteHadoopConf(mergeRemoteHadoopConf(props ++ Map("path" -> path)))
+      setRemoteHadoopConf(mergeRemoteHadoopConf(props.filterKeys(k => !k.trim.toLowerCase.startsWith("spark.hadoop")) ++ Map("path" -> path)))
 
       val hivePartitions = hiveClient.getPartitions(hiveCatalogTable)
 
@@ -883,6 +887,12 @@ object SparkEngine extends MbLogging {
       } else {
         logInfo("Using an exists sparkContext.")
       }
+    }
+  }
+
+  def stop: Unit = {
+    if (sparkContext != null && !sparkContext.isStopped) {
+      sparkContext.stop()
     }
   }
 

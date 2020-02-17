@@ -26,7 +26,6 @@ case class MbPruneFilters(session: SparkSession) extends Rule[LogicalPlan] with 
           var falseLiteralFlag = false
           breakable {
             for (x <- binaryComparisonPredicates.slice(0, binaryComparisonPredicates.length)) {
-              println(x)
               for (y <- binaryComparisonPredicates.slice(1, binaryComparisonPredicates.length + 1)) {
                 if (x.children.head.semanticEquals(y.children.head)) {
                   val (l, r) = if (x.prettyName < y.prettyName) (x, y) else (y, x)

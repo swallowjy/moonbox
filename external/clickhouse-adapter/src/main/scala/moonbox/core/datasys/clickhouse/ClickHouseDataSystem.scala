@@ -144,7 +144,7 @@ class ClickHouseDataSystem(props: Map[String, String])
 		val sqlBuilder = new MbSqlBuilder(plan, new MbClickHouseDialect)
 		val sql = sqlBuilder.toSQL
 		val schema = sqlBuilder.finalLogicalPlan.schema
-		logInfo(s"pushdown sql : $sql")
+		logInfo(s"pushdown sql: $sql")
 		val rdd = new MbJdbcRDD(
 			sparkSession.sparkContext,
 			getConnection,

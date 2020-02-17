@@ -149,7 +149,6 @@ object MoonboxRest {
   }
 
   private def splitSql(sql: String, splitter: Char): Seq[String] = {
-    val stack = new mutable.Stack[Char]()
     val splitIndex = new ArrayBuffer[Int]()
     var doubleQuoteCount = 0
     var singleQuoteCount = 0

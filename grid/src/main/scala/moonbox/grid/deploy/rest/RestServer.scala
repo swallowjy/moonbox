@@ -129,7 +129,7 @@ class RestServer(host: String, port: Int, conf: MbConf, mbService: MoonboxServic
 					post {
 						entity(as[SchemaInbound]) { in =>
 							complete {
-								mbService.schema(in.username, in.password, in.sql, in.database)
+								mbService.schema(in.username, in.password, in.sqls, in.database, in.analyzable)
 							}
 						}
 					}

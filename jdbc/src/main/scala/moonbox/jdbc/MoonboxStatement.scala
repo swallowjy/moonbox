@@ -24,7 +24,6 @@ import java.sql._
 import moonbox.client.MoonboxClient
 import moonbox.client.entity.MoonboxRowSet
 
-import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 class MoonboxStatement(connection: MoonboxConnection) extends Statement {
@@ -121,7 +120,7 @@ class MoonboxStatement(connection: MoonboxConnection) extends Statement {
   override def getMaxRows = maxRows
 
   override def setMaxRows(max: Int) = {
-    //    if (max < 0) throw new SQLException("maxRows may not less than zero.")
+    if (max < 0 && max != -1) throw new SQLException("maxRows may not less than zero.")
     if (max != 0) {
       maxRows = max
     }

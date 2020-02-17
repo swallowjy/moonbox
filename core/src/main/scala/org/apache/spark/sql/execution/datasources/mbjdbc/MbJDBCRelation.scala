@@ -128,7 +128,10 @@ private[sql] object MbJDBCRelation extends Logging {
   }
 }
 
-case class MbJDBCRelation(parts: Array[Partition], jdbcOptions: JDBCOptions)(@transient val sparkSession: SparkSession)
+case class MbJDBCRelation(
+  parts: Array[Partition],
+  userSchema: Option[StructType],
+  jdbcOptions: JDBCOptions)(@transient val sparkSession: SparkSession)
   extends BaseRelation
     with PrunedFilteredScan
     with InsertableRelation with MbLogging {
@@ -138,7 +141,7 @@ case class MbJDBCRelation(parts: Array[Partition], jdbcOptions: JDBCOptions)(@tr
   override val needConversion: Boolean = false
 
   override val schema: StructType = {
-    JDBCRDD.resolveTable(jdbcOptions)
+    userSchema.getOrElse(JDBCRDD.resolveTable(jdbcOptions))
   }
 
   override def sizeInBytes: Long = dataLength

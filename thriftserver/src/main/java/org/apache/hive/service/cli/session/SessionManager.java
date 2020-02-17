@@ -55,6 +55,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.*;
 
@@ -406,7 +407,7 @@ public class SessionManager extends CompositeService {
     private static ThreadLocal<Integer> threadLocalMaxRows = new ThreadLocal<Integer>() {
         @Override
         protected Integer initialValue() {
-            return Integer.MIN_VALUE;
+            return null;
         }
     };
 
@@ -444,9 +445,29 @@ public class SessionManager extends CompositeService {
     private static ThreadLocal<Integer> threadLocalFetchSize = new ThreadLocal<Integer>() {
         @Override
         protected Integer initialValue() {
-            return Integer.MIN_VALUE;
+            return null;
         }
     };
+
+    public static void setQueryTimeout(Integer readTimeout) {
+        threadLocalQueryTimeout.set(readTimeout);
+    }
+
+    public static void clearQueryTimeout() {
+        threadLocalQueryTimeout.remove();
+    }
+
+    public static Integer getQueryTimeout() {
+        return threadLocalQueryTimeout.get();
+    }
+
+    private static ThreadLocal<Integer> threadLocalQueryTimeout = new ThreadLocal<Integer>() {
+        @Override
+        protected Integer initialValue() {
+            return null;
+        }
+    };
+
   /*---------------- moonbox code: end ----------------*/
 
     public static void setProxyUserName(String userName) {

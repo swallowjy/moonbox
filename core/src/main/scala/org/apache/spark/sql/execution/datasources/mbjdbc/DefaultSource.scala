@@ -28,11 +28,14 @@ import org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils._
 import org.apache.spark.sql.execution.datasources.jdbc.{JDBCOptions, JdbcUtils}
 import org.apache.spark.sql.jdbc.{JdbcDialect, JdbcDialects}
 import org.apache.spark.sql.sources.{CreatableRelationProvider, RelationProvider, _}
+import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{SQLContext, SaveMode, _}
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 class DefaultSource extends CreatableRelationProvider
+  with SchemaRelationProvider
   with RelationProvider {
 
   import DefaultSource._
@@ -87,6 +90,10 @@ class DefaultSource extends CreatableRelationProvider
   override def createRelation(
                                sqlContext: SQLContext,
                                parameters: Map[String, String]): BaseRelation = {
+    createRelation(sqlContext, parameters, null)
+  }
+
+  override def createRelation(sqlContext: SQLContext, parameters: Map[String, String], schema: StructType): BaseRelation = {
     val newParameters = addDriverIfNecessary(parameters) ++ addDefaultProps(parameters)
     val jdbcOptions = new JDBCOptions(newParameters)
     val partitionColumn = jdbcOptions.partitionColumn
@@ -111,7 +118,7 @@ class DefaultSource extends CreatableRelationProvider
     }
     val parts = MbJDBCRelation.columnPartition(partitionInfo)
 
-    MbJDBCRelation(parts, jdbcOptions)(sqlContext.sparkSession)
+    MbJDBCRelation(parts, Option(schema), jdbcOptions)(sqlContext.sparkSession)
   }
 
   override def createRelation(
@@ -139,7 +146,7 @@ class DefaultSource extends CreatableRelationProvider
           case _ =>
             mode match {
               case SaveMode.Overwrite =>
-                if (options.isTruncate && isCascadingTruncateTable(options.url) == Some(false)) {
+                if (options.isTruncate && isCascadingTruncateTable(options.url).contains(false)) {
                   // In this case, we should truncate table and then load.
                   truncateTable(conn, options.table)
                   val tableSchema = JdbcUtils.getSchemaOption(conn, options)
