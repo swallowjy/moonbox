@@ -19,6 +19,7 @@
     </licenses>
 
     <modules>
+        <module>hook</module>
         <module>common</module>
         <module>network</module>
         <module>launcher</module>

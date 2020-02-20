@@ -50,6 +50,7 @@ class MoonboxExecuteStatementOperation(var connection: Connection,
 
   private var resultSchema: TableSchema = _
   private val protocolVersion: TProtocolVersion = getProtocolVersion
+  private var odbcRowSet: RowSet = _
 
   override def close(): Unit = {
     logDebug(s"Closing statement operation: statement=[$statement]")
@@ -59,15 +60,23 @@ class MoonboxExecuteStatementOperation(var connection: Connection,
   override def getNextRowSet(order: FetchOrientation, maxRowsL: Long): RowSet = {
     validateDefaultFetchOrientation(order)
     assertState(OperationState.FINISHED)
-    val columns = moonboxResultSet.getMetaData.getColumnCount
-    val resultRowSet: RowSet = RowSetFactory.create(resultSchema, protocolVersion)
+    var resultRowSet: RowSet = RowSetFactory.create(resultSchema, protocolVersion)
     var count: Long = 0
-    while (count < maxRowsL && moonboxResultSet != null && moonboxResultSet.next()) {
-      val row = new ArrayBuffer[Object]
-      for (index <- 1 to columns)
-        row.append(moonboxResultSet.getObject(index))
-      resultRowSet.addRow(row.toArray)
-      count += 1
+    if (odbcRowSet != null) {
+      resultRowSet = odbcRowSet
+      odbcRowSet = null
+    } else {
+      val columns =
+        if (moonboxResultSet != null)
+          Math.min(moonboxResultSet.getMetaData.getColumnCount, resultSchema.getSize)
+        else 1
+      while (count < maxRowsL && moonboxResultSet != null && moonboxResultSet.next()) {
+        val row = new ArrayBuffer[Object]
+        for (index <- 1 to columns)
+          row.append(moonboxResultSet.getObject(index))
+        resultRowSet.addRow(row.toArray)
+        count += 1
+      }
     }
     resultRowSet
   }
@@ -122,12 +131,13 @@ class MoonboxExecuteStatementOperation(var connection: Connection,
       } else if (upperStatement.startsWith("SHOW SCHEMAS") || upperStatement.startsWith("SHOW DATABASES")) {
         /* show databases */
         logInfo("Convert 'SHOW SCHEMAS' to 'SHOW DATABASES'")
-        handleShowStatement("SHOW DATABASES", isDatabases = true)
+        moonboxResultSet = doMoonboxQuery(statement)
+        resultSchema = convert2HiveSchema(moonboxResultSet)
       } else if (upperStatement.startsWith("SHOW TABLES")) {
         /* show tables */
         val mbStatement = stripPrime(statement)
         database = mbStatement.toUpperCase(Locale.ROOT).stripPrefix("SHOW TABLES IN").trim
-        handleShowStatement(mbStatement, isDatabases = false)
+        handleShowTable(mbStatement, database.toLowerCase())
       } else {
         /* handle query sql */
         moonboxResultSet = doMoonboxQuery(statement)
@@ -138,45 +148,51 @@ class MoonboxExecuteStatementOperation(var connection: Connection,
       logInfo(s"Ignored statement: '$statement'.")
     }
     setState(OperationState.FINISHED)
+    logInfo(s"Statement Query Finished")
   }
 
-  private def handleShowStatement(mbStatement: String, isDatabases: Boolean): Unit = {
+  private def handleShowTable(mbStatement: String, database: String): Unit = {
     val result = doMoonboxQuery(mbStatement)
-    if (!isDatabases) {
-      val schema =
-        """
-          |{
-          |  "type": "struct",
-          |  "fields": [
-          |     {
-          |       "name": "database",
-          |       "type": "string",
-          |       "nullable": "false"
-          |     },
-          |     {
-          |       "name": "tableName",
-          |       "type": "string",
-          |       "nullable": "false"
-          |     },
-          |     {
-          |       "name": "isTemporary",
-          |       "type": "boolean",
-          |       "nullable": "false"
-          |     }
-          |  ]
-          |}
-        """.stripMargin
+    val schema =
+      """
+        |{
+        |  "type": "struct",
+        |  "fields": [
+        |     {
+        |       "name": "database",
+        |       "type": "string",
+        |       "nullable": "false"
+        |     },
+        |     {
+        |       "name": "tableName",
+        |       "type": "string",
+        |       "nullable": "false"
+        |     },
+        |     {
+        |       "name": "isTemporary",
+        |       "type": "boolean",
+        |       "nullable": "false"
+        |     }
+        |  ]
+        |}
+      """.stripMargin
 
-      val tableSchema = new TableSchema()
-      tableSchema.addStringColumn("database", "database name")
-      tableSchema.addStringColumn("tableName", "table name")
-      tableSchema.addPrimitiveColumn("isTemporary", Type.BOOLEAN_TYPE, "temporary")
+    val tableSchema = new TableSchema()
+    tableSchema.addStringColumn("database", "database name")
+    tableSchema.addStringColumn("tableName", "table name")
+    tableSchema.addPrimitiveColumn("isTemporary", Type.BOOLEAN_TYPE, "temporary")
 
-      resultSchema = tableSchema
-    } else {
-      resultSchema = convert2HiveSchema(result)
+    resultSchema = tableSchema
+
+    val rowSet = RowSetFactory.create(resultSchema, protocolVersion)
+    while (result != null && result.next()) {
+      val row = new ArrayBuffer[Object]
+      row.append(database)
+      row.append(result.getString(1))
+      row.append(boolean2Boolean(false))
+      rowSet.addRow(row.toArray)
     }
-    moonboxResultSet = result
+    odbcRowSet = rowSet
   }
 
   private def handleDescStatement(mbStatement: String): Unit = {

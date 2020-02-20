@@ -619,12 +619,12 @@ class MoonboxMaster(
             case Success(response) =>
               requester ! response
             case Failure(e) =>
-              requester ! TableResourcesResponses(success = false, Some(e.getMessage))
+              requester ! TableResourcesResponses(success = false, message = Some(e.getMessage))
           }
         case None =>
           val msg = s"There is no available application for service."
           logWarning(msg)
-          sender() ! TableResourcesResponses(success = false, Some(msg))
+          sender() ! TableResourcesResponses(success = false, message = Some(msg))
       }
 
     case schema: SchemaRequest =>
@@ -638,12 +638,12 @@ class MoonboxMaster(
             case Success(response) =>
               requester ! response
             case Failure(e) =>
-              requester ! SchemaResponses(success = false, Some(e.getMessage))
+              requester ! SchemaResponses(success = false, message = Some(e.getMessage))
           }
         case None =>
           val msg = s"There is no available application for service."
           logWarning(msg)
-          sender() ! SchemaResponses(success = false, Some(msg))
+          sender() ! SchemaResponses(success = false, message = Some(msg))
       }
 
     case lineage: LineageRequest =>
