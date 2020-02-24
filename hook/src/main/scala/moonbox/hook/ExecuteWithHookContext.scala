@@ -1,7 +1,7 @@
 package moonbox.hook
 
 /**
-  * ExecuteWithHookContext is a interface that the Pre/Post Execute Hook can run with the HookContext.
+  * ExecuteWithHookContext is a interface that the Execute Hook can run with the HookContext.
   */
 trait ExecuteWithHookContext extends Hook {
 

@@ -15,6 +15,8 @@ class HookContext(user: String, command: String, inputs: Set[String], output: St
     val PRE_EXEC_HOOK, POST_EXEC_HOOK, ON_FAILURE_HOOK = Value
   }
 
+  private var hookType: HookType.HookType = _
+
   def getUser: String = this.user
 
   def getCommand: String = this.command
@@ -23,5 +25,10 @@ class HookContext(user: String, command: String, inputs: Set[String], output: St
 
   def getOutput: String = this.output
 
+  def setHookType(hookType: HookType.HookType) = {
+    this.hookType = hookType
+  }
+
+  def getHookType: HookType.HookType = this.hookType
 }
 

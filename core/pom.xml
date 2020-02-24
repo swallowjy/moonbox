@@ -29,6 +29,11 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>edp.moonbox</groupId>
+            <artifactId>moonbox-hook_2.11</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <artifactId>scala-reflect</artifactId>
             <groupId>org.scala-lang</groupId>
         </dependency>

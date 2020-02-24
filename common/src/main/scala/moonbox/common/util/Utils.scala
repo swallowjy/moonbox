@@ -34,6 +34,7 @@ import org.apache.commons.io.FileUtils
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
+import scala.util.control.NonFatal
 
 object Utils extends MbLogging {
 
@@ -296,4 +297,12 @@ object Utils extends MbLogging {
 		source.filter(name => pattern.r.pattern.matcher(name).matches())
 	}
 
+	def tryLogNonFatalError(block: => Unit) {
+		try {
+			block
+		} catch {
+			case NonFatal(t) =>
+				logError(s"Uncaught exception in thread ${Thread.currentThread().getName}", t)
+		}
+	}
 }
