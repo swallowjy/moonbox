@@ -123,7 +123,8 @@ message BatchQueryProgressInbound {
 }
 message BatchQueryProgressOutbound {
     string message = 1;
-    string state = 2;
+    string appId = 2;
+    string state = 3;
 }
 /* interactive query cancel */
 message InteractiveQueryCancelInbound {

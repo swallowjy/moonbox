@@ -129,7 +129,7 @@ object ProtoOutboundMessageBuilder {
 		builder.build()
 	}
 
-	def batchQueryProgressOutbound(message: String, state: String): BatchQueryProgressOutbound = {
+	def batchQueryProgressOutbound(message: String, appId: String, state: String): BatchQueryProgressOutbound = {
 		val builder = BatchQueryProgressOutbound.newBuilder()
 		if (message != null) {
 			builder.setMessage(message)

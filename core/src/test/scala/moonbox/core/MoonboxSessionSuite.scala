@@ -20,7 +20,6 @@
 
 package moonbox.core
 
-import org.apache.spark.SparkContext
 import org.apache.spark.sql.SparkSession
 import org.scalatest.FunSuite
 
@@ -169,19 +168,28 @@ class MoonboxSessionSuite extends FunSuite {
       			""".stripMargin
 
 
+    val spark: SparkSession = SparkSession.builder().appName("test").master("local[*]").getOrCreate()
 
-    var spark: SparkSession = SparkSession.builder().appName("test").master("local[*]").getOrCreate()
+    val sc = spark.sparkContext
 
-    spark.sparkContext.stop()
+    //    spark.sql("create table parquet(id int, day string) using parquet options(path '/tmp/ccc') PARTITIONED BY (day)")
+    //
+    //    spark.sql("insert into parquet partition(day='2019-08-13-12-00-00') select 1 as id")
+    //    spark.sql("insert into parquet partition(day='2017-08-13-12-00-00') select 2 as id")
+    //    spark.sql("insert into parquet partition(day='2018-08-13-12-00-00') select 3 as id")
+    //
+    //    spark.sql("select id from parquet where day='2017'").show()
 
-    spark = SparkSession.builder().appName("test").master("local[*]").getOrCreate()
+    val filterList = sc.parallelize(List("1", "2", "3")).collect()
 
-    spark.sql("create table parquet(id int, day string) using parquet options(path '/tmp/ccc') PARTITIONED BY (day)")
+    val data = sc.parallelize(List("1\t1111", "2\t22222", "3\t3333", "4\t4444"))
 
-    spark.sql("insert into parquet partition(day='2019-08-13-12-00-00') select 1 as id")
-    spark.sql("insert into parquet partition(day='2017-08-13-12-00-00') select 2 as id")
-    spark.sql("insert into parquet partition(day='2018-08-13-12-00-00') select 3 as id")
+    data.map(_.split("\t"))
+      .filter(value => filterList.contains(value(0)))
+      .map(value => (value(0), value(1)))
+      .foreach(value => println(value._1, value._2))
 
-    spark.sql("select id from parquet where day='2017'").show()
+    data.coalesce(1).saveAsTextFile("")
+
   }
 }

@@ -165,7 +165,7 @@ class Runner(
 	}
 
 	private def statement(sql: String): QueryResult = {
-		val dataResult = mbSession.sql(sessionId, sql, maxRows, username)
+		val dataResult = mbSession.sql(sessionId, sql, maxRows)
 		initCurrentData(dataResult)
 	}
 

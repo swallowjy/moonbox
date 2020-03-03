@@ -25,7 +25,6 @@ import org.json.JSONObject
 
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 
@@ -98,21 +97,29 @@ object MoonboxRest {
     jobId
   }
 
-  private def progress(url: String, jobId: String): (String, String) = {
+  private def progress(url: String, jobId: String): (String, String, String) = {
     val jsonObject = new JSONObject()
       .put("username", user)
       .put("password", password)
       .put("jobId", jobId)
     val response = HttpClient.doPost(url, jsonObject.toString, Charsets.UTF_8.name())
     val responseObject = new JSONObject(response)
-    (responseObject.getString("state"), responseObject.getString("message"))
+    if (responseObject.has("appId"))
+      (responseObject.getString("appId"), responseObject.getString("state"), responseObject.getString("message"))
+    else
+      (null, responseObject.getString("state"), responseObject.getString("message"))
   }
 
   private def loopProgress(url: String, jobId: String, interval: Long): Unit = {
     val SUCCESS = "FINISHED"
     val FAILED = Seq("UNKNOWN", "KILLED", "FAILED", "ERROR")
+    var appIdInitial: String = null
     while (true) {
-      val (state, message) = progress(url, jobId)
+      val (appId, state, message) = progress(url, jobId)
+      if (appId != null && appIdInitial == null) {
+        appIdInitial = appId
+        println("moonbox application id: " + appIdInitial)
+      }
       if (state == SUCCESS) {
         stopped = true
         System.exit(0)

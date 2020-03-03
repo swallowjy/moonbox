@@ -75,7 +75,7 @@ object Message {
 
   case class JobProgress(jobId: String) extends JobMessage
 
-  case class JobProgressState(jobId: String, submitTime: Long, state: String, message: String) extends JobMessage
+  case class JobProgressState(jobId: String, appId: Option[String], submitTime: Long, state: String, message: String) extends JobMessage
 
   case class BatchJobCancel(jobId: String) extends JobMessage
 

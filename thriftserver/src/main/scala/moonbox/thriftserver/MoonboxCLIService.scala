@@ -54,7 +54,6 @@ class MoonboxCLIService(server: MoonboxThriftServer, serverConf: mutable.Map[Str
   }
 
   override def getResultSetMetadata(opHandle: OperationHandle): TableSchema = {
-    log.info("get result metadata")
     moonboxSessionManager.moonboxSqlOperationManager.handleToOperation.get(opHandle).getResultSetSchema
   }
 

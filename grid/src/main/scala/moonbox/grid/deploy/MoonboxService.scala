@@ -217,16 +217,16 @@ private[deploy] class MoonboxService(
         loginManager.login(org, user, password) match {
           case Some(_) =>
             askSync[JobProgressState](JobProgress(jobId))(SHORT_TIMEOUT) match {
-              case Left(JobProgressState(id, submitTime, state, message)) =>
-                BatchQueryProgressOutbound(message, Some(state))
+              case Left(JobProgressState(_, appId, _, state, message)) =>
+                BatchQueryProgressOutbound(message, appId, Some(state))
               case Right(message) =>
-                BatchQueryProgressOutbound(message, None)
+                BatchQueryProgressOutbound(message, None, None)
             }
           case None =>
-            BatchQueryProgressOutbound("Please check your username and password.", None)
+            BatchQueryProgressOutbound("Please check your username and password.", None, None)
         }
       case None =>
-        BatchQueryProgressOutbound(s"User format is org@user, but it is '$username'", None)
+        BatchQueryProgressOutbound(s"User format is org@user, but it is '$username'", None, None)
     }
 
   }

@@ -78,6 +78,7 @@ object Interface extends Interface {
 
   case class BatchQueryProgressOutbound(
                                          message: String,
+                                         appId: Option[String],
                                          state: Option[String]) extends Outbound
 
   // interactive and batch

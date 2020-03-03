@@ -1,14 +1,17 @@
 package moonbox.hook
 
+import java.util.Set
+
 /**
   * Hook Context keeps all the necessary information for all the hooks.
   *
+  * @param org
   * @param user
   * @param command
   * @param inputs input table set, table form like db.name
   * @param output output table form like db.name, when command isn't insert, the value is null
   */
-class HookContext(user: String, command: String, inputs: Set[String], output: String) {
+class HookContext(org: String, user: String, command: String, inputs: Set[String], output: String) {
 
   object HookType extends Enumeration {
     type HookType = Value
@@ -16,6 +19,8 @@ class HookContext(user: String, command: String, inputs: Set[String], output: St
   }
 
   private var hookType: HookType.HookType = _
+
+  def getOrg: String = this.org
 
   def getUser: String = this.user
 

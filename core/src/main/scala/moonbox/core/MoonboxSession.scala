@@ -55,17 +55,17 @@ class MoonboxSession(
     command
   }
 
-  def sql(sqlText: String, maxRows: Int, user: String): DataResult = {
-    sql("", sqlText, maxRows, user)
+  def sql(sqlText: String, maxRows: Int): DataResult = {
+    sql("", sqlText, maxRows)
   }
 
-  def sql(jobLabel: String, sql: String, maxRows: Int, user: String): DataResult = {
+  def sql(jobLabel: String, sql: String, maxRows: Int): DataResult = {
     engine.setJobGroup(jobLabel,
       s"""| $org@$username<br/>
           			    | $sql
 			 """.stripMargin)
     try {
-      engine.sql(sql, maxRows, user)
+      engine.sql(sql, maxRows)
     } finally {
       engine.clearJobGroup()
     }

@@ -54,7 +54,7 @@ class Servicer(
 
   def sample(sql: String): SampleResponse = {
     try {
-      val result = mbSession.sql(sql.stripSuffix(";"), 20, username)
+      val result = mbSession.sql(sql.stripSuffix(";"), 20)
       SampleSuccessed(result._2.json, iteratorToSeq(result._1).map(_.toSeq))
     } catch {
       case e: Exception =>

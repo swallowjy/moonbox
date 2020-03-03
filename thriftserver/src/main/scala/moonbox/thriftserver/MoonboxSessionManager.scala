@@ -45,10 +45,10 @@ class MoonboxSessionManager(hiveConf: HiveConf, serverConf: mutable.Map[String, 
   }
 
   private def initMoonboxConnection(sessionHandle: SessionHandle, sessionConf: java.util.Map[String, String], username: String, password: String) = {
-    logInfo("Initializing moonbox jdbc connection ...")
     val masterHost = serverConf.getOrElse(MOONBOX_SERVER_HOST_KEY, "localhost")
     val masterPort = serverConf.get(MOONBOX_SERVER_PORT_KEY).map(_.toInt).getOrElse(10010)
     val url = s"jdbc:moonbox://$masterHost:$masterPort"
+    logInfo(s"Initializing moonbox jdbc connection $url ...")
     var conn: Connection = null
     val properties = new Properties()
     properties.setProperty("user", username)

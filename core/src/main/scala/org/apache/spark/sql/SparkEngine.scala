@@ -32,7 +32,7 @@ import moonbox.core.{HookRunner, MoonboxCatalog}
 import moonbox.hook.HookContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.analyze.MbAnalyzer
-import org.apache.spark.sql.catalyst.analysis.{UnresolvedFunction, UnresolvedRelation}
+import org.apache.spark.sql.catalyst.analysis.{DatabaseAlreadyExistsException, TableAlreadyExistsException, UnresolvedFunction, UnresolvedRelation}
 import org.apache.spark.sql.catalyst.catalog.{CatalogTableType, SessionCatalog, ArchiveResource => SparkArchiveResource, FileResource => SparkFileResource, FunctionResource => SparkFunctionResource, JarResource => SparkJarResource}
 import org.apache.spark.sql.catalyst.expressions.{Literal, SubqueryExpression}
 import org.apache.spark.sql.catalyst.plans.logical._
@@ -49,8 +49,9 @@ import org.apache.spark.sql.rewrite.CTESubstitution
 import org.apache.spark.sql.types.{IntegerType, NullType, StructField, StructType}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.spark_project.guava.util.concurrent.Striped
-import scala.concurrent.ExecutionContext.Implicits.global
+
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 
@@ -319,11 +320,10 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
     *
     * @param sql     sql text
     * @param maxRows max rows return to client
-    * @param user    username
     * @return data and schema
     */
 
-  def sql(sql: String, maxRows: Int = 100, user: String): (Iterator[Row], StructType) = {
+  def sql(sql: String, maxRows: Int = 100): (Iterator[Row], StructType) = {
     var outputTable: String = null
     var inputTables = Seq.empty[String]
     val parsedPlan = parsePlan(sql)
@@ -363,7 +363,7 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
           }
       }
 
-      val hookContext = new HookContext(user, sql, inputTables.toSet, outputTable)
+      val hookContext = new HookContext(mbCatalog.getCurrentOrg, mbCatalog.catalogUser.name, sql, inputTables.toSet, outputTable)
       hookContext.setHookType(hookContext.HookType.POST_EXEC_HOOK)
 
       val optimizedPlan = optimizePlan(limitPlan)
@@ -403,7 +403,6 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
         dataFrame.cache()
         val iter = dataFrame.toLocalIterator()
         new Iterator[Row] {
-
           override def hasNext: Boolean = {
             val ifHasNext = iter.hasNext
             if (!ifHasNext) dataFrame.unpersist()
@@ -700,10 +699,14 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
     * @param db database name
     */
   def registerDatabase(db: String): Unit = {
-    if (!sessionState.catalog.databaseExists(db)) {
-      createDataFrame(s"create database if not exists ${
-        db
-      }")
+    try {
+      if (!sessionState.catalog.databaseExists(db)) {
+        createDataFrame(s"create database if not exists ${
+          db
+        }")
+      }
+    } catch {
+      case _: DatabaseAlreadyExistsException => //good
     }
   }
 
@@ -714,10 +717,14 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
     * @param props           connection or other parameters
     */
   def registerTable(tableIdentifier: TableIdentifier, props: Map[String, String]): Unit = {
-    if (props("type") == "hive") {
-      registerHiveTable(tableIdentifier, props)
-    } else {
-      registerDatasourceTable(tableIdentifier, props)
+    try {
+      if (props("type") == "hive") {
+        registerHiveTable(tableIdentifier, props)
+      } else {
+        registerDatasourceTable(tableIdentifier, props)
+      }
+    } catch {
+      case _: TableAlreadyExistsException => //good
     }
   }
 
@@ -728,7 +735,7 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
     * @param props connection or other parameters
     */
   private def registerDatasourceTable(table: TableIdentifier, props: Map[String, String]): Unit = {
-    setRemoteHadoopConf(mergeRemoteHadoopConf(props.filterKeys(k => !k.trim.toLowerCase.startsWith("spark.hadoop"))))
+    setRemoteHadoopConf(mergeRemoteHadoopConf(props))
     val schema = props.get("schema").map(s => s"($s)").getOrElse("")
     val options = props.map {
       case (k, v) => s"'$k' '$v'"
@@ -772,7 +779,7 @@ class SparkEngine(conf: MbConf, mbCatalog: MoonboxCatalog) extends MbLogging {
       )
     } else {
       val path = hiveCatalogTable.storage.locationUri.get.toString
-      setRemoteHadoopConf(mergeRemoteHadoopConf(props.filterKeys(k => !k.trim.toLowerCase.startsWith("spark.hadoop")) ++ Map("path" -> path)))
+      setRemoteHadoopConf(mergeRemoteHadoopConf(props) ++ Map("path" -> path))
 
       val hivePartitions = hiveClient.getPartitions(hiveCatalogTable)
 

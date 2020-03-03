@@ -280,11 +280,11 @@ class TransportServerProtoHandler(channelToToken: ConcurrentHashMap[Channel, Str
 		val jobId = in.getJobId
 
 		Future(mbService.batchQueryProgress(username, password, jobId)) onComplete {
-			case Success(BatchQueryProgressOutbound(message, state)) => batchProgressResponse(message, state)
-			case Failure(exception) => batchProgressResponse(exception.getMessage, None)
+			case Success(BatchQueryProgressOutbound(message, state, appId)) => batchProgressResponse(message, appId, state)
+			case Failure(exception) => batchProgressResponse(exception.getMessage, None, None)
 		}
 
-		def batchProgressResponse(message: String, state: Option[String]): Unit = {
+		def batchProgressResponse(message: String, appId: Option[String], state: Option[String]): Unit = {
 			val toResp = ProtoOutboundMessageBuilder.batchQueryProgressOutbound(message, state.orNull)
 			val message1: ProtoMessage = protobuf.ProtoMessage.newBuilder().setMessageId(messageId).setBatchQueryProgressOutbound(toResp).build()
 			ctx.writeAndFlush(message1)

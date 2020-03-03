@@ -72,8 +72,9 @@ class MoonboxExecuteStatementOperation(var connection: Connection,
         else 1
       while (count < maxRowsL && moonboxResultSet != null && moonboxResultSet.next()) {
         val row = new ArrayBuffer[Object]
-        for (index <- 1 to columns)
+        for (index <- 1 to columns) {
           row.append(moonboxResultSet.getObject(index))
+        }
         resultRowSet.addRow(row.toArray)
         count += 1
       }
@@ -123,15 +124,16 @@ class MoonboxExecuteStatementOperation(var connection: Connection,
   override def runInternal(): Unit = {
     logInfo(s"Received statement: '$statement'")
     setState(OperationState.RUNNING)
-    setHasResultSet(true)
     val upperStatement = statement.trim.toUpperCase(Locale.ROOT)
     if (!ignoreHiveSqls.contains(upperStatement) && !ignorePrefixes.exists(upperStatement.startsWith)) {
+      setHasResultSet(true)
       if (upperStatement.startsWith("DESC ")) {
         handleDescStatement(mbDescStatement(upperStatement))
       } else if (upperStatement.startsWith("SHOW SCHEMAS") || upperStatement.startsWith("SHOW DATABASES")) {
         /* show databases */
         logInfo("Convert 'SHOW SCHEMAS' to 'SHOW DATABASES'")
-        moonboxResultSet = doMoonboxQuery(statement)
+        val mbStatement = "SHOW DATABASES"
+        moonboxResultSet = doMoonboxQuery(mbStatement)
         resultSchema = convert2HiveSchema(moonboxResultSet)
       } else if (upperStatement.startsWith("SHOW TABLES")) {
         /* show tables */
@@ -144,11 +146,12 @@ class MoonboxExecuteStatementOperation(var connection: Connection,
         resultSchema = convert2HiveSchema(moonboxResultSet)
       }
     } else {
+      setHasResultSet(false)
       /* Ignore unsupported commands. */
       logInfo(s"Ignored statement: '$statement'.")
     }
-    setState(OperationState.FINISHED)
     logInfo(s"Statement Query Finished")
+    setState(OperationState.FINISHED)
   }
 
   private def handleShowTable(mbStatement: String, database: String): Unit = {

@@ -437,21 +437,21 @@ class MoonboxMaster(
     case JobProgress(driverId) =>
       if (state != RecoveryState.ACTIVE) {
         val msg = s"Current master is not active: $state.  Can only request driver state in ACTIVE state."
-        sender() ! JobProgressState(driverId, -1, DriverState.UNKNOWN.toString, msg)
+        sender() ! JobProgressState(driverId, None, -1, DriverState.UNKNOWN.toString, msg)
       } else {
         waitingDrivers.find(_.id == driverId) match {
           case Some(driver) =>
             val msg = s"Driver $driverId is waiting for submit."
-            sender() ! JobProgressState(driverId, driver.startTime, driver.state.toString, msg)
+            sender() ! JobProgressState(driverId, driver.appId, driver.startTime, driver.state.toString, msg)
           case None =>
             (drivers ++ completedDrivers).find(_.id == driverId) match {
               case Some(driver) =>
                 val msg = driver.exception.map(_.getMessage).getOrElse("")
-                sender() ! JobProgressState(driverId, driver.startTime, driver.state.toString, msg)
+                sender() ! JobProgressState(driverId, driver.appId, driver.startTime, driver.state.toString, msg)
               case None =>
                 val msg = s"Ask unknown job state: $driverId"
                 logWarning(msg)
-                sender() ! JobProgressState(driverId, -1, DriverState.UNKNOWN.toString, msg)
+                sender() ! JobProgressState(driverId, None, -1, DriverState.UNKNOWN.toString, msg)
             }
         }
       }

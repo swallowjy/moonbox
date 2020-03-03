@@ -25,7 +25,7 @@ import java.util.ServiceLoader
 
 import moonbox.core.datasys.{DataSystem, Updatable}
 import org.apache.spark.sql.execution.datasources.jdbc.JdbcUtils._
-import org.apache.spark.sql.execution.datasources.jdbc.{JDBCOptions, JdbcUtils}
+import org.apache.spark.sql.execution.datasources.jdbc.{JDBCOptions, JDBCRDD, JdbcUtils}
 import org.apache.spark.sql.jdbc.{JdbcDialect, JdbcDialects}
 import org.apache.spark.sql.sources.{CreatableRelationProvider, RelationProvider, _}
 import org.apache.spark.sql.types.StructType
@@ -63,21 +63,20 @@ class DefaultSource extends CreatableRelationProvider
     newParameters
   }
 
-  private def computePartitionBound(jdbcOptions: JDBCOptions): (Long, Long) = {
+  private def computePartitionBound(jdbcOptions: JDBCOptions, partitionColumn: String): (String, String) = {
     var conn: Connection = null
     try {
       conn = JdbcUtils.createConnectionFactory(jdbcOptions)()
       val statement = conn.createStatement()
       val table = jdbcOptions.table
-      val partitionColumn = jdbcOptions.partitionColumn.get
       val sql = s"select min($partitionColumn) as min, max($partitionColumn) as max from $table"
       val result = statement.executeQuery(sql)
       if (result.next()) {
-        val min = result.getLong(1)
-        val max = result.getLong(2)
+        val min = result.getObject(1).toString
+        val max = result.getObject(2).toString
         (min, max)
       } else {
-        throw new Exception(s"execute $sql ResultSet is empty, get partition column bounds failed.")
+        throw new Exception(s"execute $sql ResultSet is empty, auto calculate partition column bounds failed.")
       }
     } catch {
       case ex: Exception =>
@@ -95,28 +94,25 @@ class DefaultSource extends CreatableRelationProvider
 
   override def createRelation(sqlContext: SQLContext, parameters: Map[String, String], schema: StructType): BaseRelation = {
     val newParameters = addDriverIfNecessary(parameters) ++ addDefaultProps(parameters)
-    val jdbcOptions = new JDBCOptions(newParameters)
-    val partitionColumn = jdbcOptions.partitionColumn
-    val lowerBound = jdbcOptions.lowerBound
-    val upperBound = jdbcOptions.upperBound
-    val numPartitions = jdbcOptions.numPartitions
+    val mbJdbcOptions = new MbJDBCOptions(newParameters)
+    val removedPartitionBoundParameters =
+      newParameters
+        .filterNot(kv =>
+          List(JDBCOptions.JDBC_LOWER_BOUND.toLowerCase,
+            JDBCOptions.JDBC_UPPER_BOUND.toLowerCase,
+            JDBCOptions.JDBC_PARTITION_COLUMN.toLowerCase,
+            JDBCOptions.JDBC_NUM_PARTITIONS).contains(kv._1))
+    val jdbcOptions = new JDBCOptions(removedPartitionBoundParameters)
     val autoCalculateBound = newParameters.get(AUTO_COMPUTE_PARTITION_BOUND).map(_.toBoolean)
-
-    val partitionInfo = if (partitionColumn.isEmpty) {
-      assert(lowerBound.isEmpty && upperBound.isEmpty)
-      null
-    } else {
-      assert(lowerBound.nonEmpty && upperBound.nonEmpty && numPartitions.nonEmpty)
-      if (autoCalculateBound.nonEmpty && autoCalculateBound.get) {
-        val (lowerBound, upperBound) = computePartitionBound(jdbcOptions)
-        JDBCPartitioningInfo(
-          partitionColumn.get, lowerBound, upperBound, numPartitions.get)
-      } else {
-        JDBCPartitioningInfo(
-          partitionColumn.get, lowerBound.get, upperBound.get, numPartitions.get)
-      }
+    if (autoCalculateBound.nonEmpty && autoCalculateBound.get) {
+      val (lowerBound, upperBound) = computePartitionBound(jdbcOptions, mbJdbcOptions.partitionColumn.get)
+      mbJdbcOptions.setLowerBound(lowerBound)
+      mbJdbcOptions.setUpperBound(upperBound)
     }
-    val parts = MbJDBCRelation.columnPartition(partitionInfo)
+    val tableSchema = if (schema == null) JDBCRDD.resolveTable(jdbcOptions) else schema
+    val resolver = sqlContext.conf.resolver
+    val timeZoneId = sqlContext.conf.sessionLocalTimeZone
+    val parts = MbJDBCRelation.columnPartition(tableSchema, resolver, timeZoneId, mbJdbcOptions)
 
     MbJDBCRelation(parts, Option(schema), jdbcOptions)(sqlContext.sparkSession)
   }
@@ -198,11 +194,6 @@ class DefaultSource extends CreatableRelationProvider
         else url += "?rewriteBatchedStatements=true"
       }
       map.put(JDBCOptions.JDBC_URL, url)
-    }
-    if (props.contains(JDBCOptions.JDBC_PARTITION_COLUMN) &&
-      props.contains(AUTO_COMPUTE_PARTITION_BOUND) && props(AUTO_COMPUTE_PARTITION_BOUND).toBoolean) {
-      map.put(JDBCOptions.JDBC_LOWER_BOUND, "-1")
-      map.put(JDBCOptions.JDBC_UPPER_BOUND, "-1")
     }
     map.toMap
   }

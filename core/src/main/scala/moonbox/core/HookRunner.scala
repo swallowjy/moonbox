@@ -23,7 +23,6 @@ object HookRunner {
     preExecHooks.appendAll(ServiceLoader.load(classOf[PreExecuteWithHookContext]).iterator().asScala)
     postExecHooks.appendAll(ServiceLoader.load(classOf[PostExecuteWithHookContext]).iterator().asScala)
     onFailureHooks.appendAll(ServiceLoader.load(classOf[OnFailureExecuteWithHookContext]).iterator().asScala)
-    println("post hooks size: " + postExecHooks.size)
   }
 
   def runPreExecHooks(hookContext: HookContext): Unit = {
@@ -31,9 +30,7 @@ object HookRunner {
   }
 
   def runPostExecHooks(hookContext: HookContext): Unit = {
-    println("run post hooks")
     postExecHooks.foreach(postHook => Utils.tryLogNonFatalError(postHook.run(hookContext)))
-    println("run post hooks end")
   }
 
   def runOnFailureExecHooks(hookContext: HookContext): Unit = {
